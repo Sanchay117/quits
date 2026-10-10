@@ -1,0 +1,23 @@
+{
+  "name": "quits",
+  "private": true,
+  "type": "module",
+  "description": "Quits: a clearing house that nets invoices on Arc",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "abi": "node scripts/export-abi.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "viem": "^2.38.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "javascript-lp-solver": "^0.4.24",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

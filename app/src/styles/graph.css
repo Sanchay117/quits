@@ -1,0 +1,288 @@
+/* The debt graph and its collapse card. Grey is debt, the accent is cash. Opacity and stroke widths are animated
+   through SVG attributes, so these rules never set them (CSS would override the attributes). */
+
+.card--graph {
+  padding: 0;
+  overflow: hidden;
+}
+
+.collapse {
+  display: flex;
+  flex-direction: column;
+}
+
+.collapse-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+
+.collapse-header a {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.graph {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+  background-color: var(--surface);
+  background-image: radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+.graph svg {
+  display: block;
+  font-family: var(--font);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.graph-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 460px;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+  background-color: var(--surface);
+  background-image: radial-gradient(circle at 1px 1px, var(--line) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+/* Invoices ---------------------------------------------------------------------------------------------------- */
+
+.edge-line {
+  fill: none;
+  stroke: var(--edge);
+  stroke-linecap: round;
+}
+
+.edge-head {
+  fill: var(--edge);
+}
+
+.edge--waiting .edge-line {
+  stroke: var(--line-strong);
+}
+
+.edge--waiting .edge-head {
+  fill: var(--line-strong);
+}
+
+.edge--pending .edge-line {
+  stroke: var(--muted);
+  stroke-dasharray: 2 6;
+}
+
+.edge--pending .edge-head {
+  fill: var(--muted);
+}
+
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
+}
+
+.edge-pulse {
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-linecap: round;
+}
+
+.edge-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Net transfers ---------------------------------------------------------------------------------------------------- */
+
+.flow-line {
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-linecap: round;
+}
+
+.flow-head {
+  fill: var(--accent-strong);
+}
+
+.flow-label {
+  fill: var(--accent);
+  font-size: 12.5px;
+  font-weight: 750;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Members ---------------------------------------------------------------------------------------------------- */
+
+.node {
+  cursor: pointer;
+}
+
+.node-body {
+  fill: var(--surface);
+  stroke: var(--ink-2);
+  stroke-width: 1.5px;
+}
+
+.node:hover .node-body {
+  stroke: var(--ink);
+  stroke-width: 2px;
+}
+
+.node--blocked .node-body {
+  stroke: var(--bad);
+  stroke-dasharray: 3 3;
+}
+
+.node-ring-track {
+  fill: none;
+  stroke: var(--line);
+}
+
+.node-ring {
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-linecap: round;
+}
+
+.node-initials {
+  fill: var(--ink);
+  font-weight: 750;
+  text-anchor: middle;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* Font size comes from the component (it depends on the drawing width). */
+.node-label {
+  fill: var(--ink);
+  font-weight: 650;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.node-net {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.node-net--in {
+  fill: var(--good);
+}
+
+.node-net--out {
+  fill: var(--accent);
+}
+
+/* Counter, controls, legend ------------------------------------------------------------------------------------ */
+
+.collapse-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.counter {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.95rem;
+}
+
+.counter-figure {
+  display: inline-block;
+  min-width: 5.5ch;
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.counter-figure--cash {
+  color: var(--accent);
+}
+
+.counter-note {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
+.counter-note.is-visible {
+  opacity: 1;
+}
+
+.collapse-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0 18px 14px;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-debt {
+  stroke: var(--edge);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.legend-cash {
+  stroke: var(--accent-strong);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.legend-ring {
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-width: 2.5;
+}

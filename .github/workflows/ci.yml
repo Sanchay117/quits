@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Build
+        working-directory: contracts
+        run: forge build --sizes
+      - name: Test (unit, fuzz, invariant)
+        working-directory: contracts
+        run: forge test -vv
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck core and scripts
+        run: pnpm tsc --noEmit -p tsconfig.json
+      - name: Solver tests
+        run: pnpm vitest run core/
+      - name: App typecheck, tests and build
+        working-directory: app
+        run: |
+          pnpm exec tsc --noEmit -p tsconfig.json
+          pnpm exec vitest run
+          pnpm exec vite build

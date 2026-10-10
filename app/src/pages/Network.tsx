@@ -1,0 +1,280 @@
+// Network: the live graph of members and open invoices, and a solver panel that previews and settles a cycle.
+import { useMemo, useState } from "react";
+import { MAX_BATCH, solverInputFromState } from "../../../core/solver.ts";
+import { lc, type ChainState } from "../../../core/state.ts";
+import { Badge, Empty, Notice, NotDeployed, PageHeader, Party, Spinner, Stat } from "../components/common.tsx";
+import { TxStatus } from "../components/TxStatus.tsx";
+import { CollapseView } from "../graph/CollapseView.tsx";
+import { settle } from "../lib/actions.ts";
+import { useChain } from "../lib/chainState.ts";
+import { decomposeNets } from "../lib/flows.ts";
+import { debtsFromState, nameResolver, openPositions, partiesFromState } from "../lib/live.ts";
+import { formatMoney, nettedAway, type TokenSymbol } from "../lib/money.ts";
+import { nettingModel, runSolver, type Netting } from "../lib/netting.ts";
+import { activeNetwork, isDeployed } from "../lib/network.ts";
+import { tokensOf, type TokenInfo } from "../lib/tokens.ts";
+import { useTx } from "../lib/useTx.ts";
+
+const TOKENS = tokensOf(activeNetwork);
+
+export function NetworkPage() {
+  const { state, error, loading } = useChain();
+  const [symbol, setSymbol] = useState<TokenSymbol>("USDC");
+  const token = TOKENS.find((t) => t.symbol === symbol) ?? TOKENS[0];
+
+  return (
+    <>
+      <PageHeader
+        title="Network"
+        lead={`Members and open invoices on ${activeNetwork.label}. Anyone can compute a netting cycle and settle it.`}
+      >
+        {TOKENS.length > 1 && <TokenSwitch value={symbol} onChange={setSymbol} />}
+      </PageHeader>
+      {!isDeployed ? (
+        <NotDeployed what="The network view" />
+      ) : !state ? (
+        loading ? <Spinner label={`Loading ${activeNetwork.label}…`} /> : <Notice tone="bad">{error}</Notice>
+      ) : (
+        <>
+          {error && <Notice tone="warn">{error}. Showing the last state we loaded.</Notice>}
+          <LiveNetwork key={symbol} state={state} token={token} />
+        </>
+      )}
+    </>
+  );
+}
+
+function TokenSwitch({ value, onChange }: { value: TokenSymbol; onChange: (symbol: TokenSymbol) => void }) {
+  return (
+    <div className="segmented" role="group" aria-label="Token">
+      {TOKENS.map((t) => (
+        <button key={t.symbol} type="button" aria-pressed={t.symbol === value} onClick={() => onChange(t.symbol)}>
+          {t.symbol}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Identifies a solution, so the animation replays only when what would clear actually changes. */
+function clearsKey(netting: Netting | null): string {
+  return netting ? netting.result.clears.map((c) => `${c.id}:${c.amount}`).join(",") : "idle";
+}
+
+function LiveNetwork({ state, token }: { state: ChainState; token: TokenInfo }) {
+  const [previewing, setPreviewing] = useState(false);
+  const netting = useMemo(
+    () => (previewing ? runSolver(solverInputFromState(state, token.address)) : null),
+    [previewing, state, token.address],
+  );
+  const model = useMemo(() => {
+    const parties = partiesFromState(state, token.address);
+    const debts = debtsFromState(state, token.address);
+    return nettingModel(parties, debts, netting?.result ?? null, token.symbol);
+  }, [state, token.address, token.symbol, netting]);
+
+  return (
+    <>
+      <div className="network-layout">
+        <div className="card card--graph">
+          {model.edges.length === 0 ? (
+            <Empty>No open {token.symbol} invoices right now.</Empty>
+          ) : (
+            <CollapseView
+              model={model}
+              playKey={`${token.symbol}-${clearsKey(netting)}`}
+              autoplay={previewing}
+              header={<GraphNote previewing={previewing} />}
+              ariaLabel={`Open ${token.symbol} invoices between members`}
+            />
+          )}
+        </div>
+        <SolverPanel state={state} token={token} netting={netting} onCompute={() => setPreviewing(true)} />
+      </div>
+      <MembersTable state={state} token={token} />
+    </>
+  );
+}
+
+function GraphNote({ previewing }: { previewing: boolean }) {
+  return (
+    <div className="collapse-header">
+      <Badge tone={previewing ? "accent" : "neutral"}>{previewing ? "Preview" : "Live"}</Badge>
+      <span>
+        {previewing
+          ? "What settling now would do. Nothing has moved yet."
+          : "Solid: accepted and due. Faint: not due yet. Dashed: waiting for the debtor."}
+      </span>
+    </div>
+  );
+}
+
+interface SolverPanelProps {
+  state: ChainState;
+  token: TokenInfo;
+  netting: Netting | null;
+  onCompute: () => void;
+}
+
+function SolverPanel({ state, token, netting, onCompute }: SolverPanelProps) {
+  const eligible = useMemo(
+    () => solverInputFromState(state, token.address).obligations.length,
+    [state, token.address],
+  );
+  if (!netting) return <ComputePrompt eligible={eligible} symbol={token.symbol} onCompute={onCompute} />;
+  return <NettingPreview state={state} token={token} netting={netting} />;
+}
+
+function ComputePrompt({ eligible, symbol, onCompute }: { eligible: number; symbol: TokenSymbol; onCompute: () => void }) {
+  const due = eligible === 1 ? "invoice is" : "invoices are";
+  return (
+    <aside className="card solver">
+      <h2>Netting</h2>
+      <p>
+        {eligible === 0
+          ? `No accepted ${symbol} invoices are due yet, so there is nothing to clear.`
+          : `${eligible} accepted ${symbol} ${due} due. Run the solver in your browser to see how much clears ` +
+            "and how little cash it takes."}
+      </p>
+      <button type="button" className="button" onClick={onCompute} disabled={eligible === 0}>
+        Compute netting
+      </button>
+    </aside>
+  );
+}
+
+function NettingPreview({ state, token, netting }: { state: ChainState; token: TokenInfo; netting: Netting }) {
+  const tx = useTx();
+  const { result, verified, errors, millis } = netting;
+  const money = (units: bigint) => formatMoney(units, token.symbol);
+  const tooLarge = result.clears.length > MAX_BATCH;
+  const sendSettle = () =>
+    tx.run("Settle cycle", async (ctx, report) => {
+      const cycleId = await settle(ctx, token.address, result.clears, report);
+      return cycleId === null ? undefined : `Cycle #${cycleId} settled and final.`;
+    });
+
+  return (
+    <aside className="card solver">
+      <h2>Netting preview</h2>
+      <div className="stats stats--compact">
+        <Stat label="Clears" value={money(result.gross)} note={`of ${money(result.totalOutstanding)} due`} />
+        <Stat
+          label="Cash moved"
+          value={money(result.cash)}
+          note={`${nettedAway(result.gross, result.cash)} netted away`}
+        />
+      </div>
+      {result.uncleared > 0n && (
+        <p className="small muted">
+          {money(result.uncleared)} stays open: net payers' deposits do not cover more.
+        </p>
+      )}
+      <Transfers netting={netting} symbol={token.symbol} nameOf={nameResolver(state)} />
+      <p className={`check ${verified ? "check--ok" : "check--bad"}`}>
+        {verified ? `Checked against settle()'s rules. Solved in ${millis.toFixed(1)} ms.` : errors[0]}
+      </p>
+      {tooLarge && (
+        <Notice tone="warn">
+          More than {MAX_BATCH} invoices would clear; settle() takes at most {MAX_BATCH}.
+        </Notice>
+      )}
+      <button
+        type="button"
+        className="button"
+        onClick={() => void sendSettle()}
+        disabled={tx.busy || !verified || tooLarge || result.clears.length === 0}
+      >
+        Settle on Arc
+      </button>
+      <p className="small muted">
+        Anyone may send this. The contract re-checks every rule; a cycle settles fully or not at all.
+      </p>
+      <TxStatus progress={tx.progress} />
+      {tx.progress.phase === "success" && (
+        <a className="small" href="#/cycles">
+          See it in Cycles
+        </a>
+      )}
+    </aside>
+  );
+}
+
+interface TransfersProps {
+  netting: Netting;
+  symbol: TokenSymbol;
+  nameOf: (address: string) => string;
+}
+
+function Transfers({ netting, symbol, nameOf }: TransfersProps) {
+  const flows = decomposeNets(netting.result.nets);
+  if (flows.length === 0) {
+    const text = netting.result.gross > 0n ? "No cash moves at all: pure loops." : "Nothing to clear.";
+    return <p className="small muted">{text}</p>;
+  }
+  return (
+    <ul className="transfers">
+      {flows.map((flow) => (
+        <li key={`${flow.from}>${flow.to}`}>
+          <span>{nameOf(flow.from)}</span>
+          <span className="transfer-arrow" aria-label="pays">
+            →
+          </span>
+          <span>{nameOf(flow.to)}</span>
+          <strong>{formatMoney(flow.amount, symbol)}</strong>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function MemberStatus({ blocked, registered }: { blocked: boolean; registered: boolean }) {
+  if (blocked) return <Badge tone="bad">Blocklisted</Badge>;
+  return registered ? <Badge tone="good">Member</Badge> : <Badge>Unregistered</Badge>;
+}
+
+function MembersTable({ state, token }: { state: ChainState; token: TokenInfo }) {
+  const positions = openPositions(state, token.address);
+  const members = Object.values(state.members);
+  const key = lc(token.address);
+  const money = (units: bigint, sign = false) => formatMoney(units, token.symbol, { sign });
+  if (members.length === 0) return <Empty>No members yet.</Empty>;
+  return (
+    <section className="section">
+      <h2 className="section-title">Members</h2>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th className="num">Deposit</th>
+              <th className="num">Owed to them</th>
+              <th className="num">They owe</th>
+              <th className="num">Net</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((m) => {
+              const { receivable, payable } = positions.get(lc(m.address)) ?? { receivable: 0n, payable: 0n };
+              return (
+                <tr key={m.address}>
+                  <td>
+                    <Party address={m.address} name={m.name} />
+                  </td>
+                  <td className="num">{money(m.balances[key] ?? 0n)}</td>
+                  <td className="num">{money(receivable)}</td>
+                  <td className="num">{money(payable)}</td>
+                  <td className="num">{money(receivable - payable, true)}</td>
+                  <td>
+                    <MemberStatus blocked={m.blocked[key] ?? false} registered={m.registered} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}

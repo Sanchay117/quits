@@ -1,0 +1,378 @@
+// The debt graph: members as nodes, invoices as curved arrows, net transfers as bold arrows.
+// d3-force places the nodes once per graph shape (see useGeometry); each frame only derives widths, opacities and
+// dash offsets from the collapse progress.
+import { useRef, useState } from "react";
+import type { Flow } from "../lib/flows.ts";
+import { initials } from "../lib/format.ts";
+import { useElementWidth } from "../lib/hooks.ts";
+import { formatMoney, scaleByFraction } from "../lib/money.ts";
+import { arrowHead, clamp01, curveBetween, easeInOutCubic, share, staggered } from "./geometry.ts";
+import type { GraphEdge, GraphModel, GraphNode } from "./model.ts";
+import { flowKey, RING_GAP, RING_WIDTH, shortLabel, useGeometry, type Geometry } from "./useGeometry.ts";
+
+export interface DebtGraphProps {
+  model: GraphModel;
+  /** Clearing phase progress, 0 to 1. */
+  clear: number;
+  /** Settlement phase progress, 0 to 1. */
+  settle: number;
+  /** "auto" labels invoice amounts only when the graph is small enough to stay legible. */
+  labels?: "auto" | "always";
+  ariaLabel: string;
+}
+
+type Focus = { kind: "node" | "edge"; id: string } | null;
+
+/** Share of the settlement phase each transfer takes to draw in; they start one after another. */
+export const FLOW_SPAN = 0.6;
+const MAX_AUTO_LABELS = 16;
+
+function graphHeight(width: number): number {
+  return width < 560 ? Math.round(width * 1.12) : Math.round(Math.min(600, Math.max(400, width * 0.56)));
+}
+
+/** Measures its container and draws the graph at that size, so text keeps its real pixel size on any screen. */
+export function DebtGraph(props: DebtGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const width = useElementWidth(containerRef);
+  const height = graphHeight(width);
+  return (
+    <div ref={containerRef} className="graph" style={{ height: width ? height : undefined }}>
+      {width > 0 && <GraphCanvas {...props} width={width} height={height} />}
+    </div>
+  );
+}
+
+/** Per-invoice progress of the clearing phase: invoices the cycle does not touch never move. */
+export function clearProgress(model: GraphModel, clear: number): number[] {
+  return model.edges.map((edge, i) => (edge.cleared > 0n ? staggered(clear, i, model.edges.length) : 0));
+}
+
+function isRelated(focus: Focus, from: string, to: string, id?: string): boolean {
+  if (!focus) return true;
+  if (focus.kind === "node") return from === focus.id || to === focus.id;
+  return id === focus.id;
+}
+
+function nodeInFocus(node: GraphNode, focus: NonNullable<Focus>, model: GraphModel): boolean {
+  if (focus.kind === "node") {
+    if (node.id === focus.id) return true;
+    const touches = (from: string, to: string) =>
+      (from === focus.id && to === node.id) || (to === focus.id && from === node.id);
+    return model.edges.some((e) => touches(e.from, e.to)) || model.flows.some((f) => touches(f.from, f.to));
+  }
+  const edge = model.edges.find((e) => e.id === focus.id);
+  return edge !== undefined && (edge.from === node.id || edge.to === node.id);
+}
+
+type CanvasProps = DebtGraphProps & { width: number; height: number };
+
+export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, width, height }: CanvasProps) {
+  const geometry = useGeometry(model, width, height);
+  const [focus, setFocus] = useState<Focus>(null);
+  const progress = clearProgress(model, clear);
+  const settled = easeInOutCubic(settle);
+
+  const showAllLabels = labels === "always" || (width >= 560 && model.edges.length <= MAX_AUTO_LABELS);
+  const labelled = (edge: GraphEdge) =>
+    showAllLabels || (focus?.kind === "edge" ? focus.id === edge.id : focus?.id === edge.from || focus?.id === edge.to);
+  const toggleFocus = (next: NonNullable<Focus>) => setFocus((current) => (current?.id === next.id ? null : next));
+
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label={ariaLabel}
+      onMouseLeave={() => setFocus(null)}
+    >
+      <g>
+        {model.edges.map((edge, i) => (
+          <EdgeMark
+            key={edge.id}
+            edge={edge}
+            local={progress[i]}
+            geometry={geometry}
+            dimmed={!isRelated(focus, edge.from, edge.to, edge.id)}
+            onFocus={(on) => setFocus(on ? { kind: "edge", id: edge.id } : null)}
+          />
+        ))}
+      </g>
+      <g aria-hidden="true">
+        {model.edges.map((edge, i) => (
+          <ClearPulse key={edge.id} edge={edge} local={progress[i]} geometry={geometry} />
+        ))}
+      </g>
+      <g>
+        {model.flows.map((flow, i) => (
+          <FlowMark
+            key={flowKey(flow)}
+            flow={flow}
+            local={staggered(settle, i, model.flows.length, FLOW_SPAN)}
+            geometry={geometry}
+            symbol={model.symbol}
+            dimmed={!isRelated(focus, flow.from, flow.to)}
+          />
+        ))}
+      </g>
+      <g>
+        {model.nodes.map((node) => (
+          <NodeMark
+            key={node.id}
+            node={node}
+            geometry={geometry}
+            settle={settled}
+            symbol={model.symbol}
+            dimmed={focus !== null && !nodeInFocus(node, focus, model)}
+            onFocus={(on) => setFocus(on ? { kind: "node", id: node.id } : null)}
+            onToggle={() => toggleFocus({ kind: "node", id: node.id })}
+          />
+        ))}
+      </g>
+      <g aria-hidden="true">
+        {model.edges.map((edge, i) =>
+          labelled(edge) ? (
+            <EdgeLabel key={edge.id} edge={edge} local={progress[i]} geometry={geometry} symbol={model.symbol} />
+          ) : null,
+        )}
+        {model.flows.map((flow, i) => (
+          <FlowLabel
+            key={flowKey(flow)}
+            flow={flow}
+            local={staggered(settle, i, model.flows.length, FLOW_SPAN)}
+            geometry={geometry}
+            symbol={model.symbol}
+          />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------------------------
+// Marks
+// ------------------------------------------------------------------------------------------------------------------
+
+function headSize(strokeWidth: number) {
+  return { length: Math.min(7 + strokeWidth * 1.4, 19), width: Math.min(6 + strokeWidth * 1.3, 17) };
+}
+
+/** The trimmed curve between two nodes, from rim to rim, with an arrowhead sized for `strokeWidth`. */
+function shapeBetween(ends: { from: string; to: string }, geometry: Geometry, bend: number, strokeWidth: number) {
+  const from = geometry.positions.get(ends.from);
+  const to = geometry.positions.get(ends.to);
+  if (!from || !to) return null;
+  const head = headSize(strokeWidth);
+  const startGap = (geometry.radii.get(ends.from) ?? 16) + 2;
+  const endGap = (geometry.radii.get(ends.to) ?? 16) + RING_GAP + RING_WIDTH;
+  return { curve: curveBetween(from, to, bend, startGap, endGap, head.length), head };
+}
+
+/** Width of an invoice edge as its cleared part drains away: down to the remaining amount, or a hairline. */
+function edgeWidthAt(edge: GraphEdge, local: number, geometry: Geometry): number {
+  const full = geometry.stroke(edge.amount);
+  const remaining = edge.amount - edge.cleared;
+  const end = remaining > 0n ? geometry.stroke(remaining) : 1;
+  return full + (end - full) * local;
+}
+
+interface EdgeMarkProps {
+  edge: GraphEdge;
+  local: number;
+  geometry: Geometry;
+  dimmed: boolean;
+  onFocus: (on: boolean) => void;
+}
+
+function EdgeMark({ edge, local, geometry, dimmed, onFocus }: EdgeMarkProps) {
+  const width = edgeWidthAt(edge, local, geometry);
+  const shape = shapeBetween(edge, geometry, geometry.bends.get(edge.id) ?? 0, width);
+  if (!shape) return null;
+  const fullyCleared = edge.cleared >= edge.amount;
+  const opacity = dimmed ? 0.1 : fullyCleared ? 1 - 0.8 * local : 1;
+  return (
+    <g
+      className={`edge edge--${edge.tone}`}
+      opacity={opacity}
+      onMouseEnter={() => onFocus(true)}
+      onMouseLeave={() => onFocus(false)}
+    >
+      <title>{edge.title}</title>
+      <path className="edge-line" d={shape.curve.d} strokeWidth={width} />
+      <polygon
+        className="edge-head"
+        points={arrowHead(shape.curve.tip, shape.curve.angle, shape.head.length, shape.head.width)}
+      />
+      <path className="edge-hit" d={shape.curve.d} strokeWidth={Math.max(14, width + 10)} />
+    </g>
+  );
+}
+
+/** A short accent dash running from debtor to creditor while an invoice clears. */
+function ClearPulse({ edge, local, geometry }: { edge: GraphEdge; local: number; geometry: Geometry }) {
+  if (local <= 0 || local >= 1) return null;
+  const width = geometry.stroke(edge.amount) + 2;
+  const shape = shapeBetween(edge, geometry, geometry.bends.get(edge.id) ?? 0, width);
+  if (!shape) return null;
+  return (
+    <path
+      className="edge-pulse"
+      d={shape.curve.d}
+      pathLength={1}
+      strokeWidth={width}
+      strokeDasharray="0.2 2"
+      strokeDashoffset={0.2 - local * 1.2}
+      opacity={Math.sin(Math.PI * local)}
+    />
+  );
+}
+
+interface FlowMarkProps {
+  flow: Flow;
+  local: number;
+  geometry: Geometry;
+  symbol: GraphModel["symbol"];
+  dimmed: boolean;
+}
+
+/** A net transfer drawing itself from payer to receiver; the arrowhead lands last. */
+function FlowMark({ flow, local, geometry, symbol, dimmed }: FlowMarkProps) {
+  if (local <= 0) return null;
+  const width = Math.max(3.5, geometry.stroke(flow.amount) + 1.5);
+  const shape = shapeBetween(flow, geometry, geometry.flowBends.get(flowKey(flow)) ?? 0, width);
+  if (!shape) return null;
+  const { curve, head } = shape;
+  return (
+    <g className="flow" opacity={dimmed ? 0.15 : 1}>
+      <title>{`Net transfer: ${formatMoney(flow.amount, symbol)}`}</title>
+      <path
+        className="flow-line"
+        d={curve.d}
+        pathLength={1}
+        strokeWidth={width}
+        strokeDasharray="1 1"
+        strokeDashoffset={1 - local}
+      />
+      <polygon
+        className="flow-head"
+        points={arrowHead(curve.tip, curve.angle, head.length + 2, head.width + 2)}
+        opacity={clamp01((local - 0.7) / 0.3)}
+      />
+    </g>
+  );
+}
+
+function FlowLabel({ flow, local, geometry, symbol }: Omit<FlowMarkProps, "dimmed">) {
+  const at = geometry.flowLabels.get(flowKey(flow));
+  if (local <= 0 || !at) return null;
+  return (
+    <text className="flow-label" x={at.x} y={at.y} dy="0.35em" opacity={local}>
+      {formatMoney(flow.amount, symbol)}
+    </text>
+  );
+}
+
+interface EdgeLabelProps {
+  edge: GraphEdge;
+  local: number;
+  geometry: Geometry;
+  symbol: GraphModel["symbol"];
+}
+
+/** An invoice's amount; while it clears, it fades out (fully cleared) or switches to what remains. */
+function EdgeLabel({ edge, local, geometry, symbol }: EdgeLabelProps) {
+  const at = geometry.edgeLabels.get(edge.id);
+  const remaining = edge.amount - edge.cleared;
+  const opacity = remaining > 0n ? 1 : 1 - local;
+  if (!at || opacity <= 0.02) return null;
+  return (
+    <text className="edge-label" x={at.x} y={at.y} dy="0.35em" opacity={opacity}>
+      {formatMoney(local < 0.5 ? edge.amount : remaining, symbol)}
+    </text>
+  );
+}
+
+function nodeTitle(node: GraphNode, symbol: GraphModel["symbol"]): string {
+  const lines = [node.label];
+  if (node.deposit !== undefined) lines.push(`Deposit before: ${formatMoney(node.deposit, symbol)}`);
+  if (node.depositAfter !== undefined) lines.push(`Deposit after: ${formatMoney(node.depositAfter, symbol)}`);
+  if (node.net !== undefined) lines.push(`Net: ${formatMoney(node.net, symbol, { sign: true })}`);
+  if (node.blocked) lines.push("On the blocklist: excluded from netting");
+  return lines.join("\n");
+}
+
+interface DepositRingProps {
+  node: GraphNode;
+  radius: number;
+  settle: number;
+  maxDeposit: bigint;
+}
+
+/** The deposit as an arc around the node; it moves from before to after as the transfers land. */
+function DepositRing({ node, radius, settle, maxDeposit }: DepositRingProps) {
+  if (node.deposit === undefined) return null;
+  const after = node.depositAfter ?? node.deposit;
+  const current = node.deposit + scaleByFraction(after - node.deposit, settle);
+  const circumference = 2 * Math.PI * radius;
+  const arc = circumference * share(current, maxDeposit);
+  return (
+    <>
+      <circle className="node-ring-track" r={radius} strokeWidth={RING_WIDTH} />
+      <circle
+        className="node-ring"
+        r={radius}
+        strokeWidth={RING_WIDTH}
+        strokeDasharray={`${arc.toFixed(2)} ${circumference.toFixed(2)}`}
+        transform="rotate(-90)"
+      />
+    </>
+  );
+}
+
+interface NodeMarkProps {
+  node: GraphNode;
+  geometry: Geometry;
+  /** Eased settlement progress. */
+  settle: number;
+  symbol: GraphModel["symbol"];
+  dimmed: boolean;
+  onFocus: (on: boolean) => void;
+  onToggle: () => void;
+}
+
+function NodeMark({ node, geometry, settle, symbol, dimmed, onFocus, onToggle }: NodeMarkProps) {
+  const position = geometry.positions.get(node.id);
+  const radius = geometry.radii.get(node.id) ?? 16;
+  if (!position) return null;
+  const ring = radius + RING_GAP;
+  const above = geometry.labelAbove.get(node.id) ?? false;
+  // Name nearest the node, the net beyond it, on whichever side faces away from the middle.
+  const nameY = above ? -(ring + 9) : ring + 17;
+  const netY = above ? -(ring + 23) : ring + 31;
+  const showNet = node.net !== undefined && node.net !== 0n && settle > 0;
+  return (
+    <g
+      className={`node${node.blocked ? " node--blocked" : ""}`}
+      transform={`translate(${position.x.toFixed(1)},${position.y.toFixed(1)})`}
+      opacity={dimmed ? 0.3 : 1}
+      onMouseEnter={() => onFocus(true)}
+      onClick={onToggle}
+    >
+      <title>{nodeTitle(node, symbol)}</title>
+      <DepositRing node={node} radius={ring} settle={settle} maxDeposit={geometry.maxDeposit} />
+      <circle className="node-body" r={radius} />
+      <text className="node-initials" dy="0.35em" fontSize={Math.round(radius * 0.62)}>
+        {initials(node.label)}
+      </text>
+      <text className="node-label" y={nameY} fontSize={geometry.nameFontSize}>
+        {shortLabel(node.label)}
+      </text>
+      {showNet && (
+        <text className={`node-net ${node.net! > 0n ? "node-net--in" : "node-net--out"}`} y={netY} opacity={settle}>
+          {formatMoney(node.net!, symbol, { sign: true })}
+        </text>
+      )}
+    </g>
+  );
+}

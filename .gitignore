@@ -1,0 +1,13 @@
+node_modules/
+.secrets/
+.env
+.env.*
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+app/dist/
+*.log
+.DS_Store
+contracts/out-*/
+contracts/cache-*/
+contracts/deployments/*-local*
