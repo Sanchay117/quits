@@ -1,5 +1,5 @@
 // Random invoice networks for the Playground. Seeded, so a network can be regenerated exactly.
-import { simulatedAddress } from "./demo.ts";
+import { COMPANIES, simulatedAddress } from "./demo.ts";
 import { UNITS_PER_TOKEN } from "./money.ts";
 import type { Debt, Party } from "./netting.ts";
 
@@ -15,19 +15,14 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
+/** The seven demo companies (the same cast as Home and the seeded network), then more of their kind. */
 const NAMES = [
-  "Tidewater Freight",
-  "Boxwell Packaging",
-  "Ember Roasters",
-  "Juniper Cafes",
-  "Studio Meridian",
-  "Halftone Print",
-  "Greenleaf Dairy",
+  ...Object.values(COMPANIES),
   "Copperline Electric",
-  "Fernhill Bakery",
+  "Larkspur Bakery",
   "Lumen Signs",
   "Harbor Linen",
-  "Kestrel Couriers",
+  "Wren Couriers",
   "Oakum Joinery",
   "Pinecone Media",
   "Mosaic Tiles",

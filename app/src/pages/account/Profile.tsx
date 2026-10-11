@@ -8,6 +8,7 @@ import { TxStatus } from "../../components/TxStatus.tsx";
 import { register } from "../../lib/actions.ts";
 import { utf8Length } from "../../lib/format.ts";
 import { activeNetwork } from "../../lib/network.ts";
+import { useReadOnly } from "../../lib/readOnly.ts";
 import { useTx } from "../../lib/useTx.ts";
 
 const MAX_NAME_BYTES = 48;
@@ -17,6 +18,7 @@ export function Profile({ state, me }: { state: ChainState; me: Hex }) {
   const registered = member?.registered ?? false;
   const [name, setName] = useState(member?.name ?? "");
   const tx = useTx();
+  const readOnly = useReadOnly();
   const bytes = utf8Length(name.trim());
   const valid = bytes > 0 && bytes <= MAX_NAME_BYTES && name.trim() !== member?.name;
   const link = explorerAddress(activeNetwork, me);
@@ -52,15 +54,16 @@ export function Profile({ state, me }: { state: ChainState; me: Hex }) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Ember Roasters"
+            placeholder="e.g. Ember Hill Roasters"
             maxLength={64}
             autoComplete="organization"
+            disabled={readOnly}
           />
           <small className={bytes > MAX_NAME_BYTES ? "field-error" : undefined}>
             {bytes}/{MAX_NAME_BYTES} bytes. Public, shown to counterparties.
           </small>
         </label>
-        <button type="submit" className="button" disabled={!valid || tx.busy}>
+        <button type="submit" className="button" disabled={!valid || tx.disabled}>
           {registered ? "Rename" : "Register"}
         </button>
       </form>

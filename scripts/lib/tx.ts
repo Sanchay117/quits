@@ -3,7 +3,7 @@
 import { BaseError, decodeErrorResult, isHex, type Hex, type TransactionReceipt } from "viem";
 import { clearingHouseAbi } from "../../core/abi.ts";
 import { MIN_FEE_PER_GAS, explorerTx } from "../../core/chains.ts";
-import { int, nativeUsdc, section, short } from "./format.ts";
+import { gwei, int, nativeUsdc, section, short } from "./format.ts";
 import type { Context } from "./network.ts";
 import { walletFor } from "./network.ts";
 import type { Signer } from "./keys.ts";
@@ -70,7 +70,7 @@ export async function sendTx(ctx: Context, req: TxRequest): Promise<TransactionR
   if (balance < upfront) {
     throw new TxError(
       `${req.label}: ${short(req.from.address)} holds ${nativeUsdc(balance)} but this transaction needs up to ` +
-        `${nativeUsdc(upfront)} (${int(gas)} gas at ${fees.maxFeePerGas / GWEI} gwei${value ? ` plus ${nativeUsdc(value)}` : ""})`,
+        `${nativeUsdc(upfront)} (${int(gas)} gas at ${gwei(fees.maxFeePerGas)}${value ? ` plus ${nativeUsdc(value)}` : ""})`,
     );
   }
   const wallet = walletFor(ctx, req.from);

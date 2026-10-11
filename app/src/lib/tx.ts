@@ -108,6 +108,8 @@ const CONTRACT_ERRORS: Record<string, (args: readonly unknown[]) => string> = {
   InsufficientBalance: ([available, requested]) =>
     `You asked for ${amount(requested)} but only ${amount(available)} is deposited.`,
   MemberBlocked: ([member]) => `${shortAddress(String(member))} is on the blocklist and cannot take part.`,
+  PayerNotConsenting: ([member]) =>
+    `${shortAddress(String(member))} would pay cash in this cycle but has not approved your wallet as a solver.`,
   InvoiceNotDue: ([id]) => `Invoice #${id} is not due yet.`,
   InvoiceNotOpen: ([id]) => `Invoice #${id} is not open (it may have been cleared already).`,
   ClearExceedsOutstanding: ([id]) => `The amount for invoice #${id} is more than what is still outstanding.`,

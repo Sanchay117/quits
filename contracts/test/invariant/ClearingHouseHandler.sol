@@ -12,15 +12,20 @@ import {NativeUSDCHarness} from "../mocks/NativeUSDCHarness.sol";
 /// @notice Drives the clearing house through random sequences of member actions for the invariant suite.
 ///
 /// The handler keeps two independent records:
-///  - a model (ghost ledger, invoice statuses and outstanding amounts) updated only from what each action should do,
-///    plus a prediction of whether each call should succeed;
-///  - observations of the contract after every action, used to check that statuses only move along legal edges and
-///    that outstanding amounts only fall, and only inside settle().
+///  - a model (ghost ledger, invoice statuses and outstanding amounts, and every member's solver approvals) updated
+///    only from what each action should do, plus a prediction of whether each call should succeed and, for settle(),
+///    of the exact error it should revert with;
+///  - observations of the contract after every action, used to check that statuses only move along legal edges, that
+///    outstanding amounts only fall, and only inside settle(), and that a deposit falls in settle() only when its
+///    owner sent the cycle or approved the sender.
+/// Cycles are sent by members and by strangers (addresses that never hold a deposit), and members keep changing whom
+/// they approve, so the consent rule decides real calls in both directions.
 /// Assertions here would be swallowed (the suite tolerates handler reverts), so every check increments a counter that
 /// the invariant functions require to stay at zero.
 contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
     uint256 private constant NATIVE_SCALE = 1e12;
     uint256 private constant ACTOR_COUNT = 5;
+    uint256 private constant STRANGER_COUNT = 2;
     uint256 private constant MAX_INVOICES = 48;
     uint256 private constant MAX_CLEARS = 10;
     uint256 private constant MAX_DEPOSIT = 500e6;
@@ -47,6 +52,9 @@ contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
     address public immutable usdc;
     MockFiatToken public immutable eurc;
     address[] private _actors;
+    address[] private _strangers;
+    /// @dev Every address setSolver is called with: address(0) (anyone), then the actors, then the strangers.
+    address[] private _solverCandidates;
     address private immutable _payee;
 
     // Model.
@@ -56,6 +64,8 @@ contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
     mapping(uint256 id => ClearingHouse.Status) public ghostStatus;
     mapping(uint256 id => InvoiceTerms) private _terms;
     uint256 public ghostInvoiceCount;
+    /// @notice member => solver => approved, from the member's own setSolver calls. address(0) means anyone.
+    mapping(address member => mapping(address solver => bool)) public ghostApproved;
 
     // Observations.
     mapping(uint256 id => ClearingHouse.Status) private _seenStatus;
@@ -69,11 +79,18 @@ contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
     uint256 public settleNetMismatches;
     uint256 public settleCashMismatches;
     uint256 public settleSumChanges;
+    uint256 public drawsWithoutConsent;
+    uint256 public approvalMismatches;
 
     // Coverage, to show the campaign does real work.
     uint256 public settlesSucceeded;
     uint256 public settlesRejected;
     uint256 public invoicesPaid;
+    uint256 public settlesByStrangers;
+    uint256 public settlesRefusedForConsent;
+    uint256 public drawsBySelf;
+    uint256 public drawsByApprovedSender;
+    uint256 public approvalChanges;
 
     // Blocklist: at most one (actor, token) pair is blocked at a time, so most cycles can still settle.
     address private _blockedActor;
@@ -83,18 +100,71 @@ contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
         house = house_;
         usdc = house_.usdc();
         eurc = eurc_;
+        _solverCandidates.push(address(0));
         for (uint256 i; i < ACTOR_COUNT; ++i) {
             address actor = makeAddr(string.concat("actor", vm.toString(i)));
             _actors.push(actor);
-            // The model does not track solver consent (SolverConsent.t.sol covers it), so every actor allows any solver.
-            vm.prank(actor);
-            house_.setSolver(address(0), true);
+            _solverCandidates.push(actor);
+        }
+        for (uint256 i; i < STRANGER_COUNT; ++i) {
+            address stranger = makeAddr(string.concat("stranger", vm.toString(i)));
+            _strangers.push(stranger);
+            _solverCandidates.push(stranger);
         }
         _payee = makeAddr("payee");
+
+        // Every run starts from mixed consent, which setSolver() then keeps changing: three actors allow anyone (as
+        // the demo companies do), actor3 trusts only actor0, and actor4 approves no one.
+        for (uint256 i; i < 3; ++i) {
+            _approveAtStart(house_, _actors[i], address(0));
+        }
+        _approveAtStart(house_, _actors[3], _actors[0]);
     }
 
     function actors() external view returns (address[] memory) {
         return _actors;
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Solver consent
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /// @notice A random actor allows or stops allowing a random solver: anyone (address(0)) a third of the time,
+    ///         otherwise an actor (possibly itself) or a stranger.
+    function setSolver(uint256 actorSeed, uint256 solverSeed, uint256 allowSeed) external {
+        uint256 r = _mix(solverSeed);
+        address target = r % 3 == 0 ? address(0) : _solverCandidates[1 + (r >> 2) % (_solverCandidates.length - 1)];
+        address actor = _actor(actorSeed);
+        bool allowed = _mix(allowSeed) % 2 == 0;
+
+        vm.prank(actor);
+        try house.setSolver(target, allowed) {
+            ghostApproved[actor][target] = allowed;
+            ++approvalChanges;
+        } catch {
+            _expect(false);
+        }
+        _checkApprovals();
+        _observe(false);
+    }
+
+    /// @dev The contract's isSolverFor agrees with the model for every actor and every address the suite approves.
+    ///      Run after setSolver(), which must change exactly one pair, and after settle(), which must change none.
+    function _checkApprovals() private {
+        for (uint256 i; i < ACTOR_COUNT; ++i) {
+            for (uint256 j; j < _solverCandidates.length; ++j) {
+                address member = _actors[i];
+                address solver = _solverCandidates[j];
+                if (house.isSolverFor(member, solver) != ghostApproved[member][solver]) ++approvalMismatches;
+            }
+        }
+    }
+
+    /// @dev Constructor only: `house` is immutable and cannot be read from a function while the handler is built.
+    function _approveAtStart(ClearingHouse house_, address member, address solver) private {
+        vm.prank(member);
+        house_.setSolver(solver, true);
+        ghostApproved[member][solver] = true;
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -222,26 +292,33 @@ contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
     // Settlement, time and the blocklist
     // ---------------------------------------------------------------------------------------------------------------
 
-    /// @notice Settle a random selection of open invoices. Short payers usually top up first (as a member would after
-    ///         seeing the plan), so that accepted cycles are common and rejected ones still happen.
-    function settle(uint256 tokenSeed, uint256 pickSeed, uint256 solverSeed) external {
+    /// @notice Settle a random selection of open invoices, sent by a random actor or, one time in four, by a stranger.
+    ///         Short payers usually top up first (as a member would after seeing the plan), so that accepted cycles are
+    ///         common and rejected ones still happen.
+    function settle(uint256 tokenSeed, uint256 pickSeed, uint256 senderSeed) external {
         Solution memory s = _pickSolution(_token(tokenSeed), pickSeed);
         if (s.ids.length == 0) return;
         if (_mix(pickSeed) % 4 != 0) _topUpShortPayers(s);
 
-        bool expectOk = _settleShouldSucceed(s);
+        address sender = _sender(senderSeed);
+        bytes memory expectedError = _expectedSettleError(s, sender);
         uint256[] memory before = house.balancesOf(_actors, s.token);
+        uint256[] memory otherBefore = house.balancesOf(_actors, _otherToken(s.token));
 
-        vm.prank(_actor(solverSeed));
+        vm.prank(sender);
         try house.settle(s.token, s.ids, s.amounts) returns (uint256 cycleId) {
-            _expect(expectOk);
+            _expect(expectedError.length == 0);
             ++settlesSucceeded;
+            if (_isStranger(sender)) ++settlesByStrangers;
             _checkSettlement(s, cycleId, before);
             _applyClears(s);
-        } catch {
-            _expect(!expectOk);
+        } catch (bytes memory reason) {
+            _expect(expectedError.length != 0 && keccak256(reason) == keccak256(expectedError));
             ++settlesRejected;
+            if (bytes4(reason) == ClearingHouse.PayerNotConsenting.selector) ++settlesRefusedForConsent;
         }
+        _checkConsent(s.token, sender, before, otherBefore);
+        _checkApprovals();
         _observe(true);
     }
 
@@ -311,17 +388,73 @@ contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
         }
     }
 
-    function _settleShouldSucceed(Solution memory s) private view returns (bool) {
+    /// @dev The exact error settle() must revert with when `sender` submits `s`, or empty if it must succeed. Follows the
+    ///      contract's order: invoices by ascending id first (the picks are open invoices of the right token within
+    ///      their outstanding, so only maturity can fail), then members in the order first touched (creditor before
+    ///      debtor), each checked against the blocklists and, if it pays, for consent and then liquidity.
+    function _expectedSettleError(Solution memory s, address sender) private view returns (bytes memory) {
         for (uint256 i; i < s.ids.length; ++i) {
-            if (block.timestamp < _terms[s.ids[i]].dueDate) return false;
+            if (block.timestamp < _terms[s.ids[i]].dueDate) {
+                return abi.encodeWithSelector(ClearingHouse.InvoiceNotDue.selector, s.ids[i]);
+            }
         }
+        (address[] memory touched, uint256 count) = _touchOrder(s);
+        for (uint256 k; k < count; ++k) {
+            address actor = touched[k];
+            if (_isBlockedAnywhere(s.token, actor)) {
+                return abi.encodeWithSelector(ClearingHouse.MemberBlocked.selector, actor);
+            }
+            uint256 owed = _netPayment(s, _indexOf(actor));
+            if (owed == 0) continue;
+            if (!_approves(actor, sender)) {
+                return abi.encodeWithSelector(ClearingHouse.PayerNotConsenting.selector, actor);
+            }
+            uint256 available = house.balanceOf(actor, s.token);
+            if (available < owed) {
+                return abi.encodeWithSelector(ClearingHouse.InsufficientLiquidity.selector, actor, owed, available);
+            }
+        }
+        return "";
+    }
+
+    /// @dev Members in the order settle() first touches them: invoice by invoice in id order, creditor then debtor.
+    function _touchOrder(Solution memory s) private view returns (address[] memory touched, uint256 count) {
+        touched = new address[](ACTOR_COUNT);
+        for (uint256 i; i < s.ids.length; ++i) {
+            InvoiceTerms storage terms = _terms[s.ids[i]];
+            count = _touch(touched, count, terms.creditor);
+            count = _touch(touched, count, terms.debtor);
+        }
+    }
+
+    function _touch(address[] memory touched, uint256 count, address member) private pure returns (uint256) {
+        for (uint256 j; j < count; ++j) {
+            if (touched[j] == member) return count;
+        }
+        touched[count] = member;
+        return count + 1;
+    }
+
+    /// @dev SPEC invariant 7, checked against ghost state: a deposit (in either token) falls in settle() only if its
+    ///      owner sent the cycle or, by the model's record of its setSolver calls, approved the sender or anyone. Runs
+    ///      after refused cycles too, which must leave every deposit as it was.
+    function _checkConsent(address token, address sender, uint256[] memory before, uint256[] memory otherBefore)
+        private
+    {
+        uint256[] memory afterwards = house.balancesOf(_actors, token);
+        uint256[] memory otherAfterwards = house.balancesOf(_actors, _otherToken(token));
         for (uint256 i; i < ACTOR_COUNT; ++i) {
-            if (s.received[i] == 0 && s.paid[i] == 0) continue;
+            if (afterwards[i] >= before[i] && otherAfterwards[i] >= otherBefore[i]) continue;
             address actor = _actors[i];
-            if (_isBlockedAnywhere(s.token, actor)) return false;
-            if (_netPayment(s, i) > house.balanceOf(actor, s.token)) return false;
+            if (actor == sender) ++drawsBySelf;
+            else if (_approves(actor, sender)) ++drawsByApprovedSender;
+            else ++drawsWithoutConsent;
         }
-        return true;
+    }
+
+    /// @dev The consent rule, from the model's own record of setSolver calls.
+    function _approves(address member, address sender) private view returns (bool) {
+        return member == sender || ghostApproved[member][sender] || ghostApproved[member][address(0)];
     }
 
     /// @dev SPEC invariant 4 (and the settle half of invariant 1), checked on every accepted cycle.
@@ -488,8 +621,25 @@ contract ClearingHouseHandler is CommonBase, StdCheats, StdUtils {
         return _actors[_mix(seed) % ACTOR_COUNT];
     }
 
+    /// @dev The sender of a cycle: a stranger one time in four, otherwise an actor.
+    function _sender(uint256 seed) private view returns (address) {
+        uint256 r = _mix(seed);
+        return r % 4 == 0 ? _strangers[(r >> 2) % STRANGER_COUNT] : _actors[(r >> 4) % ACTOR_COUNT];
+    }
+
+    function _isStranger(address account) private view returns (bool) {
+        for (uint256 i; i < STRANGER_COUNT; ++i) {
+            if (_strangers[i] == account) return true;
+        }
+        return false;
+    }
+
     function _token(uint256 seed) private view returns (address) {
         return _mix(seed) % 2 == 0 ? usdc : address(eurc);
+    }
+
+    function _otherToken(address token) private view returns (address) {
+        return token == usdc ? address(eurc) : usdc;
     }
 
     function _dueWithinADay(uint256 seed) private view returns (uint64) {

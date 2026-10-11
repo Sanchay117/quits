@@ -8,6 +8,7 @@ import { fiatTokenAbi } from "../../lib/abis.ts";
 import { depositToken, depositUsdc, withdraw } from "../../lib/actions.ts";
 import { formatMoney, parseAmount } from "../../lib/money.ts";
 import { activeNetwork, publicClient } from "../../lib/network.ts";
+import { useReadOnly } from "../../lib/readOnly.ts";
 import { tokensOf, type TokenInfo } from "../../lib/tokens.ts";
 import { useTx } from "../../lib/useTx.ts";
 
@@ -40,8 +41,8 @@ export function Funds({ state, me }: { state: ChainState; me: Hex }) {
     <section className="card">
       <h2>Deposits</h2>
       <p className="muted small">
-        A deposit is your consent to pay matured, accepted debts from it, and only ever your net position in a cycle.
-        Withdraw what you do not need at any time.
+        A deposit pays only your net position in a cycle, and only in cycles you send or that a solver you approved
+        sends (see Netting permissions). Withdraw what you do not need at any time.
       </p>
       <div className="funds">
         {tokensOf(activeNetwork).map((token) => (
@@ -57,6 +58,7 @@ function TokenFunds({ token, state, me }: { token: TokenInfo; state: ChainState;
   const inWallet = useWalletBalance(token, me, state.blockNumber);
   const [text, setText] = useState("");
   const tx = useTx();
+  const readOnly = useReadOnly();
   const amount = parseAmount(text);
   const valid = amount !== null && amount > 0n;
 
@@ -91,17 +93,23 @@ function TokenFunds({ token, state, me }: { token: TokenInfo; state: ChainState;
       </div>
       <label className="field">
         <span>Amount</span>
-        <input inputMode="decimal" placeholder="0.00" value={text} onChange={(e) => setText(e.target.value)} />
+        <input
+          inputMode="decimal"
+          placeholder="0.00"
+          value={text}
+          disabled={readOnly}
+          onChange={(e) => setText(e.target.value)}
+        />
         {text && !valid && <small className="field-error">Up to 6 decimals, more than zero.</small>}
       </label>
       <div className="button-row">
-        <button type="button" className="button" disabled={!valid || tx.busy} onClick={() => void onDeposit()}>
+        <button type="button" className="button" disabled={!valid || tx.disabled} onClick={() => void onDeposit()}>
           Deposit
         </button>
         <button
           type="button"
           className="button button--ghost"
-          disabled={!valid || tx.busy || (amount ?? 0n) > deposited}
+          disabled={!valid || tx.disabled || (amount ?? 0n) > deposited}
           onClick={() => void onWithdraw()}
         >
           Withdraw

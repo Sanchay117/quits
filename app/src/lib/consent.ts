@@ -43,17 +43,21 @@ export function depositsLeftOut(state: ChainState, token: string, input: SolveIn
   return { count, total };
 }
 
-/** Who may send cycles that draw on a member's deposit, as the members table shows it. */
-export type SolverAccess = "anyone" | "approved-you" | "approved-only";
+/**
+ * Who may send cycles that draw on a member's deposit, as the members table shows it. "you" is the connected
+ * wallet's own row: it can always settle its own cycles, so "approved only" would undersell it.
+ */
+export type SolverAccess = "anyone" | "you" | "approved-you" | "approved-only";
 
 export function solverAccess(member: Member, submitter: string | null): SolverAccess {
   if (member.allowsAnySolver) return "anyone";
-  const isSubmitter = submitter !== null && sameAccount(member.address, submitter);
-  return member.drawableBySubmitter && !isSubmitter ? "approved-you" : "approved-only";
+  if (submitter !== null && sameAccount(member.address, submitter)) return "you";
+  return member.drawableBySubmitter ? "approved-you" : "approved-only";
 }
 
 export const SOLVER_ACCESS_LABEL: Record<SolverAccess, string> = {
   anyone: "Anyone",
+  you: "You",
   "approved-you": "Approved, incl. you",
   "approved-only": "Approved only",
 };
@@ -67,20 +71,31 @@ export function parseSolverAddress(text: string, me: string): Hex | string {
   return getAddress(value);
 }
 
-export interface SolverSetLog {
-  solver: Hex;
-  allowed: boolean;
+/**
+ * The addresses whose approval by `me` is worth reading (isSolverFor(me, address)) to list the solvers it approved:
+ * every member and invoice counterparty, every account that has sent a cycle, and `extra` (an address typed into the
+ * form, solvers approved during this visit). Leaves out `me`, the zero address (the switch shows it) and anything
+ * that is not an address. Checksummed, each once, sorted by address so the read is stable from poll to poll.
+ *
+ * This replaces a scan of SolverSet events, which Arc's public RPCs refuse once the deployment is more than 10,000
+ * blocks (about 80 minutes) old. The cost: a solver that is none of these is not listed, but the form still checks it.
+ */
+export function approvalCandidates(state: ChainState, me: string, extra: Iterable<string | null | undefined> = []): Hex[] {
+  const found = new Map<string, Hex>();
+  const add = (value: string | null | undefined) => {
+    if (!value || !isAddress(value, { strict: false })) return;
+    const key = lc(value);
+    if (key === lc(me) || key === lc(ANY_SOLVER) || found.has(key)) return;
+    found.set(key, getAddress(value));
+  };
+  Object.values(state.members).forEach((m) => add(m.address));
+  state.cycles.forEach((cycle) => add(cycle.solver));
+  for (const value of extra) add(value);
+  return [...found.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, address]) => address);
 }
 
-/**
- * Solvers a member has approved and not revoked, from its SolverSet events in chain order (the last event per solver
- * wins). The zero address (anyone) is left out; the switch shows it. Sorted by address for a stable list.
- */
-export function currentApprovals(logs: SolverSetLog[]): Hex[] {
-  const latest = new Map<string, { solver: Hex; allowed: boolean }>();
-  for (const log of logs) latest.set(lc(log.solver), { solver: getAddress(log.solver), allowed: log.allowed });
-  return [...latest.entries()]
-    .filter(([key, entry]) => entry.allowed && key !== lc(ANY_SOLVER))
-    .map(([, entry]) => entry.solver)
-    .sort((a, b) => (lc(a) < lc(b) ? -1 : lc(a) > lc(b) ? 1 : 0));
+/** The candidates whose isSolverFor(me, candidate) read true, in candidate order. */
+export function approvedSolvers(candidates: readonly Hex[], flags: readonly boolean[]): Hex[] {
+  if (flags.length !== candidates.length) throw new Error("One approval flag per candidate is required.");
+  return candidates.filter((_, i) => flags[i]);
 }

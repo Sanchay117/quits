@@ -12,6 +12,7 @@ import { formatDateTime } from "../lib/format.ts";
 import { formatMoney, nettedAway } from "../lib/money.ts";
 import { nettingModel, runSolver, simulatedInput } from "../lib/netting.ts";
 import { activeNetwork, isDeployed } from "../lib/network.ts";
+import { sourcifyUrl } from "../lib/site.ts";
 import { tokenBySymbol } from "../lib/tokens.ts";
 
 function sampleModel(): GraphModel {
@@ -157,23 +158,34 @@ const WHY_ARC = [
     "A cycle costs about a cent",
     "Gas is priced in USDC: settling 15 invoices between 6 companies costs about $0.01, so cycles can run every few minutes instead of once a day.",
   ],
-  ["Euro too", "EURC invoices clear the same way, in their own cycles, with permit deposits in one transaction."],
+  [
+    "EURC supported",
+    "EURC invoices clear in their own cycles; deposits use an EIP-2612 permit. The demo network runs in USDC.",
+  ],
 ] as const;
+
+/** DTCC's own figures, as cited in the README. */
+const DTCC_2020 =
+  "https://www.dtcc.com/dtcc-connection/articles/2021/april/19/ask-the-expert-same-day-every-day-how-same-day-settlement-works-at-dtcc";
+const DTCC_EQUITIES = "https://www.dtcc.com/products-and-services/clearing-settlement-services/equities-clearing";
 
 function ContractLink() {
   const contract = activeNetwork.clearingHouse;
-  const link = contract ? explorerAddress(activeNetwork, contract) : null;
   if (!contract) return <p className="muted">The contract is not deployed on {activeNetwork.label} yet.</p>;
+  const verified = sourcifyUrl(activeNetwork, contract);
+  const explorer = explorerAddress(activeNetwork, contract);
   return (
-    <p>
-      Contract on {activeNetwork.label}: <code className="break">{contract}</code>
-      {link && (
-        <>
-          {" "}
-          <ExternalLink href={link}>View on Arc Explorer</ExternalLink>
-        </>
+    <>
+      <p>
+        Contract on {activeNetwork.label}: <code className="break">{contract}</code>
+      </p>
+      {(verified || explorer) && (
+        <p className="link-row">
+          {verified && <ExternalLink href={verified}>Verified source on Sourcify</ExternalLink>}
+          {explorer && <ExternalLink href={explorer}>Transactions on Arc Explorer</ExternalLink>}
+        </p>
       )}
-    </p>
+    </>
   );
 }
 
@@ -196,14 +208,19 @@ export function HomePage() {
             though most of that money comes straight back around.
           </p>
           <p>
-            Markets solved this long ago. DTCC's NSCC nets away about 98% of US equity trade payments every day:
-            $1.7T of trades settle with about $38B. Small businesses still pay gross.
+            Markets solved this long ago. In US equities, DTCC's NSCC nets every member's trades so that only the
+            differences are paid: on an average day in 2020, $1.77 trillion of trades netted down to just under $38
+            billion, about 98% (<ExternalLink href={DTCC_2020}>DTCC</ExternalLink>). Small businesses still pay every
+            invoice in full.
           </p>
         </div>
         <aside className="callout">
           <span className="callout-figure">98%</span>
-          <span>of US equity trade payments netted away by DTCC's NSCC each day</span>
-          <span className="callout-small">$1.7T of trades settle with about $38B</span>
+          <span>
+            average reduction in US equities payment obligations from DTCC's netting (
+            <ExternalLink href={DTCC_EQUITIES}>dtcc.com</ExternalLink>)
+          </span>
+          <span className="callout-small">An average day in 2020: $1.77 trillion netted to just under $38 billion</span>
         </aside>
       </section>
 
@@ -235,7 +252,10 @@ export function HomePage() {
       <section className="section card cta">
         <div>
           <h2>No owner, no admin, no upgrades, no fees.</h2>
-          <p>The rules live in one short contract. Anyone can submit a netting cycle; the contract checks it.</p>
+          <p>
+            The rules live in one short contract. Anyone can submit a netting cycle; the contract checks it, and takes
+            cash only from members who approved the sender.
+          </p>
           <ContractLink />
         </div>
         <div className="cta-actions">

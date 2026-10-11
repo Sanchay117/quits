@@ -4,6 +4,7 @@
 
 .hero {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 28px;
   padding-top: 40px;
 }
@@ -160,6 +161,7 @@
 
 .network-layout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -187,6 +189,7 @@
 
 .playground {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -203,6 +206,7 @@
 
 .controls {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -233,6 +237,7 @@
 
 .account {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -270,6 +275,7 @@
 
 .token-funds {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -363,4 +369,66 @@
 
 .not-deployed p {
   margin: 0;
+}
+
+/* Account: netting permissions and the accept-all confirmation ------------------------------------------------- */
+
+.permission {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.permission p {
+  margin: 0;
+}
+
+.solver-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.solver-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.solver-list .party {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.confirm {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.confirm p {
+  margin: 0 0 10px;
+}
+
+.list-note {
+  margin: 8px 0 0;
+}
+
+/* Contract links under the Home call to action ------------------------------------------------------------------ */
+
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
 }

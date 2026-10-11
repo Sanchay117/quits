@@ -1,5 +1,5 @@
 // Runs the shared solver and turns its result into the debt graph's model.
-import { checkSolution, solve, type SolveInput, type SolveResult } from "../../../core/solver.ts";
+import { MAX_BATCH, checkSolution, solve, type SolveInput, type SolveResult } from "../../../core/solver.ts";
 import type { EdgeTone, GraphEdge, GraphModel, GraphNode } from "../graph/model.ts";
 import { decomposeNets } from "./flows.ts";
 import { formatMoney, type TokenSymbol } from "./money.ts";
@@ -36,6 +36,21 @@ export function runSolver(input: SolveInput): Netting {
   const millis = performance.now() - startedAt;
   const check = checkSolution(input, result.clears);
   return { result, verified: check.ok, errors: check.errors, millis };
+}
+
+/** True when one settle() call cannot take the result: the contract reverts with BatchTooLarge above MAX_BATCH clears. */
+export function exceedsBatch(result: SolveResult, max: number = MAX_BATCH): boolean {
+  return result.clears.length > max;
+}
+
+/**
+ * The same input restricted to the `max` oldest obligations (lowest ids). Solving it can clear at most `max`
+ * invoices, so the result fits one settle() call, and it stays valid for the full input: the obligations are a subset
+ * and the deposits are the same. The rest can clear in the next cycle.
+ */
+export function limitToBatch(input: SolveInput, max: number = MAX_BATCH): SolveInput {
+  const oldest = [...input.obligations].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).slice(0, max);
+  return { ...input, obligations: oldest };
 }
 
 /** Solver input for a simulated network: every debt is eligible, deposits are the liquidity. */

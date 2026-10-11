@@ -11,7 +11,7 @@ import { clearingHouseAbi } from "../core/abi.ts";
 import { NATIVE_SCALE } from "../core/chains.ts";
 import { solve, solverInputFromState } from "../core/solver.ts";
 import { ANY_SOLVER, InvoiceStatus, statusLabel } from "../core/state.ts";
-import { NETWORK_OPTIONS, SEND_OPTIONS, parseArgs, type ScriptSpec } from "./lib/args.ts";
+import { NETWORK_OPTIONS, SEND_OPTIONS, fail, parseArgs, type ScriptSpec } from "./lib/args.ts";
 import { sendCalls, viaMemo, type Call } from "./lib/arc.ts";
 import { DEMO_ROUNDS, parseScale } from "./lib/demo.ts";
 import { date, heading, pct, section, table, usd } from "./lib/format.ts";
@@ -37,10 +37,11 @@ const DAY = 86_400n;
 
 runScript(async () => {
   const args = parseArgs(spec);
+  const round = args.int("round") ?? 1;
+  if (!DEMO_ROUNDS.includes(round)) fail(`--round must be one of ${DEMO_ROUNDS.join(", ")}`);
+  const scale = parseScale(args.get("scale"));
   const ctx = await connect(args);
   const house = requireClearingHouse(ctx);
-  const round = args.int("round") ?? 1;
-  const scale = parseScale(args.get("scale"));
   const companies = demoCompanies(loadCompanies(ctx.net.name));
   const name = (address: string) => companies.find((c) => c.address.toLowerCase() === address.toLowerCase())?.name ?? address;
 

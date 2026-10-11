@@ -51,8 +51,8 @@ Availability of the web app (the contract stays usable directly).
 
 ## Invariants and how they are tested
 
-The suite has **171 tests, all passing**: 165 unit tests, 5 fuzz tests (2,000 runs each) and 1 stateful invariant
-suite that checks 6 invariants. Of the unit tests, 19 test the token mocks, 5 the deploy script and 2 are gas
+The suite has **176 tests, all passing**: 170 unit tests, 5 fuzz tests (2,000 runs each) and 1 stateful invariant
+suite that checks 7 invariants (the 7th: a deposit never pays cash in a cycle its owner did not send or approve). Of the unit tests, 19 test the token mocks, 5 the deploy script and 2 are gas
 measurements with budgets.
 
 The invariant suite (`test/invariant/`) drives a handler through 128 random sequences of 250 calls each (32,000 calls):
@@ -90,14 +90,14 @@ annotations are comments only: the compiled bytecode is byte-for-byte the same a
 | T-2 | `getInvoices` / `getCycles` with a huge `count` (for example `type(uint256).max`, "give me everything") overflowed and reverted instead of clipping. | Low | Fixed: the end index is clipped before any addition. Tests: `test_getInvoicesWithHugeCountReturnsAll`, `test_getCyclesWithHugeCountReturnsAll`. |
 | T-3 | `depositWithPermit` tried `permit()` before checking the token, so an unsupported token address failed without the `UnsupportedToken` error. | Low | Fixed: the token is checked first. Test: `test_depositWithPermitReportsUnsupportedToken`. |
 
-### Independent adversarial audit
+### Internal adversarial review
 
-An independent review attacked the contract through three lenses: economics, Arc integration, and gas and limits.
-Each reported finding came with a proof-of-concept test and was then re-checked by a separate verifier that tried to
-refute it, ran the PoC and set the final severity used below. The gas and limits lens did not complete; measured gas
-figures are given in [Gas and limits](#gas-and-limits) instead. The audit ran against the contract **before** solver
-consent was added (that change is its fix for E-1). Its PoC tests were run against that version and are not part of
-this repository's suite; the fixes and their tests are.
+This is not a third-party audit. It was an internal, AI-assisted adversarial review: separate reviewers attacked the
+contract through three lenses (economics, Arc integration, gas and limits), each finding came with a proof-of-concept
+test, and a separate verifier then tried to refute it, ran the PoC and set the final severity used below. The gas and
+limits lens did not complete; measured gas figures are given in [Gas and limits](#gas-and-limits) instead. The review
+ran against the contract **before** solver consent was added (that change is the fix for E-1); the cherry-picking
+PoCs now live in `contracts/test/CherryPicking.t.sol`, asserting that each attack reverts.
 
 Severity is the verifier's. E = economics lens, A = Arc lens.
 
@@ -120,7 +120,7 @@ Severity is the verifier's. E = economics lens, A = Arc lens.
 
 #### Notes on each finding
 
-**E-1, fixed.** The fix is the audit's own recommendation: `setSolver(solver, allowed)`, `isSolverFor`, and a check in
+**E-1, fixed.** The fix follows the review's recommendation: `setSolver(solver, allowed)`, `isSolverFor`, and a check in
 `settle()` that every net payer is the submitter or approved it (`address(0)` meaning anyone). Pure loops stay
 permissionless. What remains, by design: a solver a member approved still chooses which of the member's matured debts
 its cash pays, and a member that approves `address(0)` opts back into the old behaviour. When a debtor's deposit
@@ -133,7 +133,7 @@ payer.
 **E-2 and A-3, acknowledged.** No funds move wrongly: every griefing clear is itself a valid payment of an accepted,
 matured debt, and the victim cycle reverts without changing anything. Consent narrows the attack: a stranger can no
 longer clear 1 unit of a debt paid from a deposit unless that debtor approved anyone, but it can still clear 1 unit
-of every edge of a pure loop (a valid cash-free cycle), and a net payer can still withdraw. The auditors measured a
+of every edge of a pure loop (a valid cash-free cycle), and a net payer can still withdraw. The review measured a
 grief at about 216,000 execution gas, about 0.005 USDC at Arc's 20 gwei floor, paid again for every attempt. A
 tolerant `settle` that clamps amounts was considered and rejected: the verifier showed a griefer defeats it by
 clipping a single edge (or a debt outside the cycle that shares a binding payer), and it would settle something other
@@ -142,14 +142,14 @@ call with `eth_estimateGas` immediately before sending and refuses to send if th
 before asking the wallet to sign. Automatic re-solve and retry is not implemented.
 
 **E-3, acknowledged.** The contract cannot tell a wash cycle from a real one, and any onchain gate (minimum cash,
-registration, a deposit) either breaks invariant 6 or is free for a Sybil to meet. The auditors measured a whole wash
+registration, a deposit) either breaks invariant 6 or is free for a Sybil to meet. The review measured a whole wash
 (two invoices of `type(uint96).max` issued, accepted and settled) at about 593,000 gas, about 0.012 USDC. Consent does not help here because no cash
 moves. Funds are never at risk; the harm is to the headline numbers. The fix belongs in the app: compute headline
 totals and pick the hero cycle only from cycles whose members are all known demo members, and label anything
 contract-wide as unfiltered. The app does not do this yet.
 
 **E-4, acknowledged.** `MAX_BATCH = 256` bounds the gas of one `settle()` (the largest cycle measures 16.6M gas; see
-below). The auditors measured 256 unbatched wash invoices at about 51.9M gas, about 1.04 USDC. Anyone can sweep wash
+below). The review measured 256 unbatched wash invoices at about 51.9M gas, about 1.04 USDC. Anyone can sweep wash
 pairs with separate zero-cash cycles, but the tooling does not split solutions: `scripts/cycle.ts` refuses to send a
 solution larger than `MAX_BATCH` and says so, and the app disables its settle button. An honest network with more
 than 256 eligible clears hits the same limit, so batch planning (split by connected component, largest gross first)
@@ -204,7 +204,7 @@ fallback was rejected because it would let a blocklisted member withdraw wheneve
 `receive` hook gets `Reentrancy`; batched or Memo deposits must use `approve` on `0x3600` plus `depositToken(USDC)`,
 because Multicall3From and Memo cannot forward value to `deposit()`.
 
-#### What the audit checked and found sound
+#### What the review checked and found sound
 
 Conservation of nets in every cycle; that the order of ids or members cannot be gamed (all nets are summed before any
 balance moves); inclusive due dates and no early payment; every narrowing cast at its limit; the 18 vs 6 decimal
@@ -242,7 +242,7 @@ adds about 0.83M gas, so the largest settle is about 17.5M gas on Arc: under 60%
 From `contracts/`:
 
 ```sh
-forge test                                   # 171 tests: unit, fuzz (2,000 runs) and the invariant suite
+forge test                                   # 176 tests: unit, fuzz (2,000 runs) and the invariant suite
 forge test --match-contract GasReport -vv    # the gas figures above
 forge test --match-path test/SolverConsent.t.sol
 forge lint src script                        # no findings

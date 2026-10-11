@@ -75,6 +75,7 @@ export interface TokenTotals {
 export interface ChainState {
   network: ArcNetwork["name"];
   clearingHouse: Hex;
+  /** The block every read in this state was made at, and its timestamp. */
   blockNumber: bigint;
   timestamp: bigint;
   tokens: Hex[];
@@ -119,6 +120,10 @@ export const ANY_SOLVER: Hex = "0x0000000000000000000000000000000000000000";
  * The whole clearing-house state. Pass `opts.submitter` (the account that would send settle()) to learn whose
  * deposits a cycle it sends may draw on (Member.drawableBySubmitter); without it, only members that allow any solver
  * count as drawable.
+ *
+ * One consistent snapshot: the latest block is fetched first and every read is pinned to it, so invoices, deposits,
+ * blocklist and consent flags, cycles, totals, `blockNumber` and `timestamp` all describe the same block even when
+ * new blocks arrive (Arc makes one in well under a second) while the reads are in flight.
  */
 export async function loadState(client: PublicClient, net: ArcNetwork, opts: LoadStateOptions = {}): Promise<ChainState> {
   const address = net.clearingHouse;
@@ -130,28 +135,31 @@ export async function loadState(client: PublicClient, net: ArcNetwork, opts: Loa
   const contract = { address, abi: clearingHouseAbi } as const;
   const multicallAddress = net.multicall3;
 
-  const [block, head] = await Promise.all([
-    client.getBlock(),
-    client.multicall({
-      allowFailure: false,
-      multicallAddress,
-      contracts: [
-        { ...contract, functionName: "invoiceCount" },
-        { ...contract, functionName: "cycleCount" },
-        { ...contract, functionName: "members" },
-        { ...contract, functionName: "supportedTokens" },
-      ],
-    }),
-  ]);
+  const block = await client.getBlock();
+  const blockNumber = block.number;
+
+  const head = await client.multicall({
+    allowFailure: false,
+    multicallAddress,
+    blockNumber,
+    contracts: [
+      { ...contract, functionName: "invoiceCount" },
+      { ...contract, functionName: "cycleCount" },
+      { ...contract, functionName: "members" },
+      { ...contract, functionName: "supportedTokens" },
+    ],
+  });
   const [invoiceCount, cycleCount, registered, tokens] = head as [bigint, bigint, readonly Hex[], readonly Hex[]];
 
   const invoicePages: Promise<readonly unknown[]>[] = [];
   for (let from = 1n; from <= invoiceCount; from += PAGE) {
-    invoicePages.push(client.readContract({ ...contract, functionName: "getInvoices", args: [from, PAGE] }));
+    invoicePages.push(
+      client.readContract({ ...contract, functionName: "getInvoices", args: [from, PAGE], blockNumber }),
+    );
   }
   const cyclePages: Promise<readonly unknown[]>[] = [];
   for (let from = 0n; from < cycleCount; from += PAGE) {
-    cyclePages.push(client.readContract({ ...contract, functionName: "getCycles", args: [from, PAGE] }));
+    cyclePages.push(client.readContract({ ...contract, functionName: "getCycles", args: [from, PAGE], blockNumber }));
   }
   const [invoiceChunks, cycleChunks] = await Promise.all([Promise.all(invoicePages), Promise.all(cyclePages)]);
 
@@ -227,6 +235,7 @@ export async function loadState(client: PublicClient, net: ArcNetwork, opts: Loa
     ? await client.multicall({
         allowFailure: false,
         multicallAddress,
+        blockNumber,
         contracts: [
           ...addresses.map((a) => ({ ...contract, functionName: "nameOf" as const, args: [a] as const })),
           ...tokens.map((t) => ({ ...contract, functionName: "balancesOf" as const, args: [addresses, t] as const })),
@@ -284,6 +293,7 @@ export async function loadState(client: PublicClient, net: ArcNetwork, opts: Loa
     ? ((await client.multicall({
         allowFailure: false,
         multicallAddress,
+        blockNumber,
         contracts: tokens.flatMap((t) => [
           { ...contract, functionName: "totalCleared" as const, args: [t] as const },
           { ...contract, functionName: "totalCashMoved" as const, args: [t] as const },
@@ -299,7 +309,7 @@ export async function loadState(client: PublicClient, net: ArcNetwork, opts: Loa
   return {
     network: net.name,
     clearingHouse: address,
-    blockNumber: block.number,
+    blockNumber,
     timestamp: block.timestamp,
     tokens: [...tokens],
     members,

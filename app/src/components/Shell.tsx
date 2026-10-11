@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { explorerAddress } from "../../../core/chains.ts";
 import { displayName, shortAddress } from "../lib/format.ts";
 import { useChain } from "../lib/chainState.ts";
-import { activeNetwork, allNetworks, isDeployed, isNetworkName, networkHref } from "../lib/network.ts";
+import { activeNetwork, isDeployed, isNetworkName, networkHref, shownNetworks } from "../lib/network.ts";
 import type { Route } from "../lib/router.ts";
 import { connectWallet, ignoreRejection, isOnActiveChain, switchToActiveNetwork, useWallet } from "../lib/wallet.ts";
 
@@ -36,7 +36,7 @@ function NetworkPicker() {
           if (isNetworkName(event.target.value)) window.location.href = networkHref(event.target.value);
         }}
       >
-        {allNetworks.map((net) => (
+        {shownNetworks.map((net) => (
           <option key={net.name} value={net.name}>
             {net.label}
           </option>

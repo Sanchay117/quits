@@ -54,6 +54,13 @@ export function weiToUnitsCeil(wei: bigint): bigint {
   return (wei + NATIVE_SCALE - 1n) / NATIVE_SCALE;
 }
 
+/** A per-gas price in gwei with up to two decimals: `21 gwei`, `0.88 gwei`. */
+export function gwei(wei: bigint): string {
+  const hundredths = (wei + 5_000_000n) / 10_000_000n;
+  const frac = (hundredths % 100n).toString().padStart(2, "0").replace(/0+$/, "");
+  return `${hundredths / 100n}${frac ? `.${frac}` : ""} gwei`;
+}
+
 export function int(n: bigint | number): string {
   return groupThousands(n.toString());
 }

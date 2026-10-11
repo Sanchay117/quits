@@ -1,9 +1,10 @@
 // Prints the clearing house's state: members and deposits, open invoices, settled cycles, lifetime totals, and what
 // a netting cycle would do right now. Read-only.
-import { explorerAddress } from "../core/chains.ts";
+import { getAddress, isAddress } from "viem";
+import { explorerAddress, type Hex, type NetworkName } from "../core/chains.ts";
 import { solve, solverInputFromState } from "../core/solver.ts";
-import { InvoiceStatus, statusLabel, type Invoice } from "../core/state.ts";
-import { NETWORK_OPTIONS, parseArgs, type ScriptSpec } from "./lib/args.ts";
+import { InvoiceStatus, statusLabel, type Invoice, type Member } from "../core/state.ts";
+import { NETWORK_OPTIONS, fail, parseArgs, type ScriptSpec } from "./lib/args.ts";
 import { refToText } from "./lib/demo.ts";
 import { date, dateTime, heading, money, nativeUsdc, pct, section, short, table } from "./lib/format.ts";
 import { hasCompanies, loadCompanies } from "./lib/keys.ts";
@@ -12,17 +13,29 @@ import { runScript } from "./lib/tx.ts";
 
 const spec: ScriptSpec = {
   name: "status.ts",
-  summary: "Print members, deposits, open invoices, cycles and totals.",
-  options: [...NETWORK_OPTIONS, { name: "all", type: "boolean", description: "List every invoice, not only pending and open ones" }],
+  summary: "Print members, deposits, solver consent, open invoices, cycles and totals.",
+  options: [
+    ...NETWORK_OPTIONS,
+    { name: "all", type: "boolean", description: "List every invoice, not only pending and open ones" },
+    {
+      name: "submitter",
+      type: "string",
+      placeholder: "address|company name",
+      description: "Show consent and the netting preview for cycles sent by this account (default: sent by anyone)",
+    },
+  ],
+  examples: ["node scripts/status.ts", 'node scripts/status.ts --submitter "Fernway Cafes"'],
 };
 
 runScript(async () => {
   const args = parseArgs(spec);
   const ctx = await connect(args);
-  const state = await readState(ctx);
+  const submitter = resolveSubmitter(ctx.net.name, args.get("submitter"));
+  const state = await readState(ctx, { submitter });
   const symbol = (token: string) => tokenSymbol(ctx, token);
   const fmt = (units: bigint, token: string) => money(units, symbol(token));
   const label = (address: string) => state.members[address.toLowerCase()]?.name || short(address);
+  const sender = submitter ? label(submitter) : "anyone";
 
   heading(`Quits on ${ctx.net.label}`);
   const link = explorerAddress(ctx.net, state.clearingHouse);
@@ -32,19 +45,29 @@ runScript(async () => {
 
   const members = Object.values(state.members);
   const wallets = await Promise.all(members.map((m) => ctx.client.getBalance({ address: m.address })));
+  const consent = (m: Member): string => {
+    if (m.allowsAnySolver) return "anyone";
+    if (!submitter || !m.drawableBySubmitter) return "none";
+    return m.address.toLowerCase() === submitter.toLowerCase() ? "self" : "submitter";
+  };
   section(`Members (${members.filter((m) => m.registered).length} registered)`);
   console.log(
     table(
-      ["Name", "Address", ...state.tokens.map((t) => `${symbol(t)} deposit`), "Wallet", "Notes"],
+      ["Name", "Address", ...state.tokens.map((t) => `${symbol(t)} deposit`), "Wallet", "Solvers", "Notes"],
       members.map((m, i) => [
         m.name || "(no name)",
         m.address,
         ...state.tokens.map((t) => fmt(m.balances[t.toLowerCase()] ?? 0n, t)),
         nativeUsdc(wallets[i]),
+        consent(m),
         [m.registered ? "" : "not registered", Object.values(m.blocked).some(Boolean) ? "BLOCKED" : ""].filter(Boolean).join(", "),
       ]),
       ["left", "left", ...state.tokens.map(() => "right" as const), "right"],
     ),
+  );
+  console.log(
+    `  Solvers: who may submit cycles that draw cash from the member's deposit ("anyone" after setSolver(address(0), true)` +
+      `${submitter ? `; "submitter" when it approved ${short(submitter)}` : ""}). Cash-free loops need no approval.`,
   );
   if (hasCompanies(ctx.net.name)) {
     const missing = loadCompanies(ctx.net.name).filter((c) => !state.members[c.address.toLowerCase()]);
@@ -113,7 +136,7 @@ runScript(async () => {
     );
   }
 
-  section("Netting now");
+  section(`Netting now (cycle sent by ${sender})`);
   let eligible = false;
   for (const token of state.tokens) {
     const result = solve(solverInputFromState(state, token));
@@ -126,3 +149,14 @@ runScript(async () => {
   }
   if (!eligible) console.log("  No accepted, matured invoices are waiting: nothing to net.");
 });
+
+/** --submitter as an address: given directly, or a company from the wallets file (only its address is used). */
+function resolveSubmitter(network: NetworkName, value: string | undefined): Hex | null {
+  if (value === undefined) return null;
+  if (isAddress(value)) return getAddress(value);
+  const company = hasCompanies(network)
+    ? loadCompanies(network).find((c) => c.name.toLowerCase() === value.toLowerCase())
+    : undefined;
+  if (!company) fail(`--submitter must be an address or a company in the ${network} wallets file, got "${value}"`);
+  return company.address;
+}

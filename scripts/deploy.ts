@@ -8,11 +8,11 @@ import { explorerAddress, explorerTx } from "../core/chains.ts";
 import { NETWORK_OPTIONS, SEND_OPTIONS, fail, parseArgs, type ScriptSpec } from "./lib/args.ts";
 import { broadcastFile, readBroadcast, writeDeployment } from "./lib/deployments.ts";
 import { runForge } from "./lib/forge.ts";
-import { heading, int, nativeUsdc, section } from "./lib/format.ts";
+import { gwei, heading, int, nativeUsdc, section } from "./lib/format.ts";
 import { deployerPrivateKey, loadDeployer } from "./lib/keys.ts";
 import { connect } from "./lib/network.ts";
 import { GAS, confirmPlan } from "./lib/plan.ts";
-import { GWEI, currentFees, runScript } from "./lib/tx.ts";
+import { currentFees, runScript } from "./lib/tx.ts";
 
 const spec: ScriptSpec = {
   name: "deploy.ts",
@@ -54,11 +54,11 @@ runScript(async () => {
 
   const fees = await currentFees(ctx);
   const balance = await ctx.client.getBalance({ address: deployer.address });
-  // forge sets the gas limit to 130% of its estimate (which comes out near 2.86M) and wants that much at the fee cap.
+  // forge sets the gas limit to 130% of its estimate (which comes out near 2.98M) and wants that much at the fee cap.
   const upfront = ((GAS.deploy * 13n) / 10n) * fees.maxFeePerGas;
   console.log(`  Deployer ${deployer.address} (${deployer.source}) holds ${nativeUsdc(balance)}`);
   console.log(`  Constructor: ClearingHouse(${ctx.net.usdc}, [${eurc}])`);
-  console.log(`  Fees: max ${fees.maxFeePerGas / GWEI} gwei, tip ${fees.maxPriorityFeePerGas / GWEI} gwei (current base fee ${fees.baseFee / GWEI} gwei)`);
+  console.log(`  Fees: max ${gwei(fees.maxFeePerGas)}, tip ${gwei(fees.maxPriorityFeePerGas)} (current base fee ${gwei(fees.baseFee)})`);
   if (ctx.net.clearingHouse) console.log(`  Note: core/deployments.ts already records ${ctx.net.clearingHouse} for ${ctx.net.name}; a new deploy replaces it.`);
 
   const feeArgs = ["--with-gas-price", fees.maxFeePerGas.toString(), "--priority-gas-price", fees.maxPriorityFeePerGas.toString()];

@@ -11,7 +11,7 @@ Foundry project for the Quits clearing house on Arc (Solidity 0.8.30, EVM Prague
 | `test/` | Unit, fuzz and stateful invariant tests, gas report, regression tests. |
 
 The rules the contract enforces, its invariants, how each is tested and every finding from development and the
-independent audit are in [`../docs/SECURITY.md`](../docs/SECURITY.md). The contract summary is in
+internal adversarial review are in [`../docs/SECURITY.md`](../docs/SECURITY.md). The contract summary is in
 [`../docs/SPEC.md`](../docs/SPEC.md).
 
 ## Commands

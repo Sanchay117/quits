@@ -11,3 +11,5 @@ app/dist/
 contracts/out-*/
 contracts/cache-*/
 contracts/deployments/*-local*
+app/tsconfig.tsbuildinfo
+contracts/broadcast/**/dry-run/

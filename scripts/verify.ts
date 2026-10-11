@@ -1,5 +1,5 @@
-// Verifies the deployed ClearingHouse source on Sourcify (Arc Mainnet 5042 and Arc Testnet 5042002 are supported;
-// no API key needed) with `forge verify-contract --verifier sourcify`. The constructor arguments are read back from
+// Verifies the deployed ClearingHouse source on Sourcify and on Arc's Blockscout explorer (Arc Mainnet 5042 and Testnet 5042002;
+// no API key needed) with `forge verify-contract`. The constructor arguments are read back from
 // the contract itself (usdc and supportedTokens), so they match what was deployed.
 import { encodeAbiParameters, getAddress, isAddress, type Hex } from "viem";
 import { clearingHouseAbi } from "../core/abi.ts";
@@ -14,7 +14,7 @@ const SOURCIFY_CHAINS = [5042, 5_042_002];
 
 const spec: ScriptSpec = {
   name: "verify.ts",
-  summary: "Verify the deployed ClearingHouse on Sourcify (Arc Mainnet or Testnet).",
+  summary: "Verify the deployed ClearingHouse on Sourcify and Arc Explorer (Arc Mainnet or Testnet).",
   options: [
     ...NETWORK_OPTIONS,
     { name: "address", type: "string", placeholder: "address", description: "Contract to verify (default: the recorded deployment)" },
@@ -45,26 +45,37 @@ runScript(async () => {
   const constructorArgs = encodeAbiParameters([{ type: "address" }, { type: "address[]" }], [usdc, others]);
   console.log(`  Constructor: ClearingHouse(${usdc}, [${others.join(", ")}])`);
 
-  const forgeArgs = [
-    "verify-contract",
-    address,
-    "src/ClearingHouse.sol:ClearingHouse",
-    "--chain",
-    String(ctx.net.chainId),
-    "--verifier",
-    "sourcify",
-    "--constructor-args",
-    constructorArgs,
-    "--watch",
+  // Sourcify first, then Arc's own explorer (Blockscout), so reviewers see the source wherever they click.
+  const verifiers: { label: string; flags: string[] }[] = [
+    { label: "Sourcify", flags: ["--verifier", "sourcify"] },
+    ...(ctx.net.explorer
+      ? [{ label: "Arc Explorer (Blockscout)", flags: ["--verifier", "blockscout", "--verifier-url", `${ctx.net.explorer}/api/`] }]
+      : []),
   ];
+  const commands = verifiers.map((v) => ({
+    label: v.label,
+    args: [
+      "verify-contract",
+      address,
+      "src/ClearingHouse.sol:ClearingHouse",
+      "--chain",
+      String(ctx.net.chainId),
+      ...v.flags,
+      "--constructor-args",
+      constructorArgs,
+      "--watch",
+    ],
+  }));
   if (args.flag("dry-run")) {
-    console.log(`\n  cd contracts && forge ${forgeArgs.join(" ")}`);
+    for (const c of commands) console.log(`\n  cd contracts && forge ${c.args.join(" ")}`);
     console.log("\nDry run: nothing submitted.");
     return;
   }
-  section("forge verify-contract");
-  const run = await runForge(forgeArgs);
-  if (run.code !== 0) fail("Verification failed; see forge's output above");
+  for (const c of commands) {
+    section(`forge verify-contract: ${c.label}`);
+    const run = await runForge(c.args);
+    if (run.code !== 0) fail(`${c.label} verification failed; see forge's output above`);
+  }
 
   section("Verified");
   console.log(`  Sourcify: https://repo.sourcify.dev/${ctx.net.chainId}/${address}`);

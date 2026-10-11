@@ -7,7 +7,7 @@ import { NATIVE_SCALE } from "../core/chains.ts";
 import { NETWORK_OPTIONS, SEND_OPTIONS, fail, parseArgs, type ScriptSpec } from "./lib/args.ts";
 import { aggregate3Data, sendCalls, usdcTransferCall, type Call } from "./lib/arc.ts";
 import { DEMO_ROUNDS, parseScale } from "./lib/demo.ts";
-import { heading, nativeUsdc, section, table, usd, weiToUnitsCeil } from "./lib/format.ts";
+import { gwei, heading, nativeUsdc, section, table, usd, weiToUnitsCeil } from "./lib/format.ts";
 import { loadCompanies, loadDeployer } from "./lib/keys.ts";
 import { connect, readState } from "./lib/network.ts";
 import { GAS, batchGas, confirmPlan } from "./lib/plan.ts";
@@ -77,7 +77,7 @@ runScript(async () => {
     return ((units + ROUND_TO - 1n) / ROUND_TO) * ROUND_TO;
   });
 
-  section(fixed !== undefined ? `Target: ${usd(parseUnits(fixed, 6))} per wallet` : `Budget at a fee cap of ${fees.maxFeePerGas / 1_000_000_000n} gwei`);
+  section(fixed !== undefined ? `Target: ${usd(parseUnits(fixed, 6))} per wallet` : `Budget at a fee cap of ${gwei(fees.maxFeePerGas)}`);
   console.log(
     table(
       ["Company", "Wallet now", "Gas budget", "Deposits", "Send"],

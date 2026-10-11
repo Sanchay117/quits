@@ -7,6 +7,7 @@ import { issueInvoice, type NewInvoice } from "../../lib/actions.ts";
 import { displayName, textToRef, utf8Length } from "../../lib/format.ts";
 import { parseAmount, type TokenSymbol } from "../../lib/money.ts";
 import { activeNetwork } from "../../lib/network.ts";
+import { useReadOnly } from "../../lib/readOnly.ts";
 import { tokensOf } from "../../lib/tokens.ts";
 import { useTx } from "../../lib/useTx.ts";
 
@@ -56,6 +57,7 @@ function validate(draft: Draft, me: Hex): NewInvoice | string {
 export function IssueInvoice({ state, me }: { state: ChainState; me: Hex }) {
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const tx = useTx();
+  const readOnly = useReadOnly();
   const set = (field: keyof Draft) => (event: { target: { value: string } }) =>
     setDraft((current) => ({ ...current, [field]: event.target.value }));
   const checked = validate(draft, me);
@@ -91,6 +93,7 @@ export function IssueInvoice({ state, me }: { state: ChainState; me: Hex }) {
             placeholder="0x… or pick a member"
             spellCheck={false}
             autoComplete="off"
+            disabled={readOnly}
           />
           <datalist id="member-options">
             {counterparties.map((m) => (
@@ -103,7 +106,7 @@ export function IssueInvoice({ state, me }: { state: ChainState; me: Hex }) {
         </label>
         <label className="field">
           <span>Token</span>
-          <select value={draft.symbol} onChange={set("symbol")}>
+          <select value={draft.symbol} onChange={set("symbol")} disabled={readOnly}>
             {tokensOf(activeNetwork).map((t) => (
               <option key={t.symbol} value={t.symbol}>
                 {t.symbol}
@@ -113,27 +116,39 @@ export function IssueInvoice({ state, me }: { state: ChainState; me: Hex }) {
         </label>
         <label className="field">
           <span>Amount</span>
-          <input inputMode="decimal" placeholder="0.00" value={draft.amount} onChange={set("amount")} />
+          <input
+            inputMode="decimal"
+            placeholder="0.00"
+            value={draft.amount}
+            onChange={set("amount")}
+            disabled={readOnly}
+          />
         </label>
         <label className="field">
           <span>Due date</span>
-          <input type="date" value={draft.due} onChange={set("due")} />
+          <input type="date" value={draft.due} onChange={set("due")} disabled={readOnly} />
           <small>Empty: due immediately.</small>
         </label>
         <label className="field">
           <span>Reference</span>
-          <input placeholder="INV-2041" value={draft.reference} onChange={set("reference")} maxLength={64} />
+          <input
+            placeholder="INV-2041"
+            value={draft.reference}
+            onChange={set("reference")}
+            maxLength={64}
+            disabled={readOnly}
+          />
           <small>Up to 32 bytes, stored as bytes32.</small>
         </label>
         <label className="field field--wide">
           <span>Memo</span>
-          <input placeholder="What it is for" value={draft.memo} onChange={set("memo")} />
+          <input placeholder="What it is for" value={draft.memo} onChange={set("memo")} disabled={readOnly} />
           <small className={utf8Length(draft.memo) > MAX_MEMO_BYTES ? "field-error" : undefined}>
             {utf8Length(draft.memo)}/{MAX_MEMO_BYTES} bytes, public and stored on chain.
           </small>
         </label>
         <div className="form-actions field--wide">
-          <button type="submit" className="button" disabled={typeof checked === "string" || tx.busy}>
+          <button type="submit" className="button" disabled={typeof checked === "string" || tx.disabled}>
             Issue invoice
           </button>
           {touched && typeof checked === "string" && <span className="field-error">{checked}</span>}

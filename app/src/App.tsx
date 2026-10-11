@@ -19,7 +19,7 @@ function Page({ route }: { route: Route }) {
     case "network":
       return <NetworkPage />;
     case "account":
-      return <AccountPage />;
+      return <AccountPage viewAs={route.viewAs} />;
     case "cycles":
       return <CyclesPage />;
     case "cycle":

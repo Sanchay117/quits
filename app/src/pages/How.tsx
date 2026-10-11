@@ -2,7 +2,7 @@
 import { explorerAddress } from "../../../core/chains.ts";
 import { ExternalLink, PageHeader } from "../components/common.tsx";
 import { activeNetwork } from "../lib/network.ts";
-import { sourceRepoUrl } from "../lib/site.ts";
+import { sourceRepoUrl, sourcifyUrl } from "../lib/site.ts";
 
 const RULES: [string, string][] = [
   ["Join", "register(name) sets a public display name of 1 to 48 bytes. Membership is otherwise permissionless."],
@@ -22,6 +22,10 @@ const RULES: [string, string][] = [
     "Net",
     "The contract sums each member's net (received minus paid) in transient storage. Every member touched must be off the token's and USDC's blocklist, and every net payer's deposit must cover its payment, or the whole call reverts.",
   ],
+  [
+    "Consent",
+    "A member pays cash in a cycle only if it sent the cycle or approved the sender with setSolver(solver, true), or approved anyone with setSolver(0x0, true). Otherwise settle() reverts. Members whose net is zero or positive need no approval, so anyone can settle a pure loop of debts.",
+  ],
   ["Finish", "Payers are debited, receivers credited. Invoices that reach zero become Paid. The cycle is recorded with its totals."],
 ];
 
@@ -31,7 +35,8 @@ const INVARIANTS = [
   "An invoice's outstanding amount never exceeds its amount and only decreases, and only through settle().",
   "In every cycle, each member's deposit changes by exactly what it was owed minus what it owed on the clears; cash moved equals the sum of net payments.",
   "Statuses only move Pending to Open, Rejected or Cancelled, and Open to Paid.",
-  "A pure loop of equal debts (A owes B owes C owes A) settles with zero deposits.",
+  "A pure loop of equal debts (A owes B owes C owes A) settles with zero deposits, whoever submits it.",
+  "Cash leaves a member's deposit only in cycles it sent or whose sender it approved (setSolver).",
 ];
 
 const LIMITATIONS = [
@@ -40,12 +45,19 @@ const LIMITATIONS = [
   "There is no credit: deposits are pre-funded, and a member pays only from its own deposit. Without one, it can only clear positions that offset exactly. There is no lending and no default process.",
   "Accepting an invoice is final for netting purposes; disputes are handled off chain, before acceptance.",
   "A cycle settles one token. USDC and EURC invoices net separately; there is no FX.",
+  "EURC is supported (its own cycles, permit deposits), but the demo network runs in USDC only, so the EURC path has not been exercised on an Arc network yet.",
   "The contract checks that a solution is valid, not that it is optimal. A weaker solution still settles correctly; it just clears less, and anyone can submit a better one in the next cycle.",
+  "A solver you approve (or anyone, if you allow anyone) still chooses which of your due debts a cycle includes, so approve only solvers you trust to net your whole book.",
+  "Anyone can front-run a cycle with a tiny one that touches the same invoices, so the bigger one reverts. That costs them gas and steals nothing; the next cycle uses the new amounts.",
+  "Cleared-volume totals can be inflated: throwaway addresses can invoice each other in loops and settle them for the price of gas.",
+  "Money sent to the contract any way other than deposit(), depositToken() or depositWithPermit(), for example a plain USDC transfer, is credited to no one. With no admin, it cannot be recovered.",
+  "If Circle pauses EURC, EURC deposits cannot be withdrawn until it is unpaused.",
 ];
 
 function ContractFacts() {
   const contract = activeNetwork.clearingHouse;
   const explorer = contract ? explorerAddress(activeNetwork, contract) : null;
+  const verified = contract ? sourcifyUrl(activeNetwork, contract) : null;
   const source = sourceRepoUrl(window.location.hostname, window.location.pathname);
   return (
     <ul className="facts">
@@ -53,10 +65,16 @@ function ContractFacts() {
         <span>Contract on {activeNetwork.label}</span>
         {contract ? <code className="break">{contract}</code> : <span className="muted">Not deployed yet</span>}
       </li>
-      {explorer && (
+      {verified && (
         <li>
           <span>Verification</span>
-          <ExternalLink href={explorer}>Source and transactions on Arc Explorer</ExternalLink>
+          <ExternalLink href={verified}>Verified source on Sourcify</ExternalLink>
+        </li>
+      )}
+      {explorer && (
+        <li>
+          <span>Activity</span>
+          <ExternalLink href={explorer}>Transactions on Arc Explorer</ExternalLink>
         </li>
       )}
       <li>
@@ -76,7 +94,7 @@ export function HowPage() {
     <>
       <PageHeader
         title="How it works"
-        lead="The rules are enforced on chain, so whoever computes a netting cycle needs no trust. The optimisation runs off chain, in your browser or a script."
+        lead="The rules are enforced on chain, so a netting cycle is checked whoever computes it. The optimisation runs off chain, in your browser or a script."
       />
 
       <section className="section">
@@ -125,8 +143,8 @@ export function HowPage() {
       <section className="section">
         <h2 className="section-title">Invariants</h2>
         <p className="muted">
-          Properties the contract keeps at all times. The Foundry test suite checks them, including with invariant
-          fuzzing.
+          Properties the contract keeps at all times. The Foundry test suite checks every one: the first five with
+          stateful invariant fuzzing as well as unit tests, the last two with fuzz and unit tests.
         </p>
         <ol className="plain-list">
           {INVARIANTS.map((text) => (

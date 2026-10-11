@@ -1,5 +1,6 @@
 // Tests for loadState against an in-memory fake of the contract and the tokens: how its batched reads map back onto
-// members (names, balances, blocklist flags, solver consent) and that solverInputFromState consumes the result.
+// members (names, balances, blocklist flags, solver consent), that every read is pinned to one block, and that
+// solverInputFromState consumes the result.
 import type { PublicClient } from "viem";
 import { describe, expect, it } from "vitest";
 import type { ArcNetwork, Hex } from "./chains.ts";
@@ -58,11 +59,12 @@ const invoices = [
 ].map((inv, i) => ({
   ...inv,
   dueDate: 0n,
-  status: InvoiceStatus.Open,
+  status: InvoiceStatus.Open as InvoiceStatus,
   ref: `0x${(i + 1).toString(16).padStart(64, "0")}`,
   issuedAt: 1n,
   memo: `invoice ${i + 1}`,
 }));
+type FakeInvoice = (typeof invoices)[number];
 const balances: Record<string, Record<string, bigint>> = {
   [USDC]: { [A]: 11n, [B]: 21n, [C]: 31n, [D]: 41n, [S]: 51n },
   [lc(EURC)]: { [A]: 12n, [B]: 22n, [C]: 32n, [D]: 42n, [S]: 52n },
@@ -74,13 +76,56 @@ const approvals: [member: Hex, solver: Hex][] = [
   [C, X],
 ];
 
-/** Answers every read loadState makes, and records each multicall's calls. */
-function fakeClient() {
+/** A settled cycle as getCycles returns it. */
+function fakeCycle(i: number) {
+  return {
+    token: USDC,
+    invoiceCount: 2,
+    memberCount: 3,
+    solver: S,
+    timestamp: 900 + i,
+    blockNumber: 30 + i,
+    grossCleared: 50n,
+    cashMoved: 1n,
+  };
+}
+
+/** What the fake contract holds at one block. */
+interface FakeChain {
+  invoices: FakeInvoice[];
+  cycles: ReturnType<typeof fakeCycle>[];
+}
+
+/** One RPC request the fake answered, with the block it was pinned to (undefined: "latest"). */
+interface Request {
+  method: "getBlock" | "readContract" | "multicall";
+  /** readContract: `name(arg, ...)`; multicall: the distinct function names, in order. */
+  what?: string;
+  blockNumber?: bigint;
+}
+
+/** The block getBlock reports as latest. */
+const SNAPSHOT = { number: 42n, timestamp: 1_000n };
+
+/**
+ * Answers every read loadState makes, and records each request and each multicall's calls. With `next`, a new block
+ * (43) holding `next` arrives right after getBlock reports block 42: reads pinned to 42 still see `chain`, reads
+ * at "latest" see `next`, and reads at any other block fail.
+ */
+function fakeClient(chain: FakeChain = { invoices, cycles: [] }, next?: FakeChain) {
   const multicalls: Call[][] = [];
+  const requests: Request[] = [];
+  let head = SNAPSHOT.number;
+  const chainAt = (blockNumber: bigint | undefined): FakeChain => {
+    const at = blockNumber ?? head;
+    if (at === SNAPSHOT.number) return chain;
+    if (next && at === SNAPSHOT.number + 1n) return next;
+    throw new Error(`Read at unknown block ${at}`);
+  };
   const onHouse = (call: Call) => {
     if (lc(call.address) !== lc(HOUSE)) throw new Error(`${call.functionName} sent to ${call.address}`);
   };
-  const read = (call: Call): unknown => {
+  const read = (call: Call, state: FakeChain): unknown => {
     const args = call.args ?? [];
     const arg = (i: number) => lc(args[i] as string);
     if (call.functionName === "isBlacklisted") {
@@ -90,15 +135,17 @@ function fakeClient() {
     onHouse(call);
     switch (call.functionName) {
       case "invoiceCount":
-        return BigInt(invoices.length);
+        return BigInt(state.invoices.length);
       case "cycleCount":
-        return 0n;
+        return BigInt(state.cycles.length);
       case "members":
         return registered.map(mixedCase);
       case "supportedTokens":
         return [USDC, EURC];
       case "getInvoices":
-        return invoices.slice(Number(args[0]) - 1, Number(args[0]) - 1 + Number(args[1]));
+        return state.invoices.slice(Number(args[0]) - 1, Number(args[0]) - 1 + Number(args[1]));
+      case "getCycles":
+        return state.cycles.slice(Number(args[0]), Number(args[0]) + Number(args[1]));
       case "nameOf":
         return names[arg(0)] ?? "";
       case "balancesOf":
@@ -113,14 +160,36 @@ function fakeClient() {
     throw new Error(`Unexpected read ${call.functionName}`);
   };
   const client = {
-    getBlock: async () => ({ number: 42n, timestamp: 1_000n }),
-    readContract: async (call: Call) => read(call),
-    multicall: async ({ contracts }: { contracts: Call[] }) => {
+    getBlock: async () => {
+      requests.push({ method: "getBlock" });
+      const block = { ...SNAPSHOT };
+      if (next) head = SNAPSHOT.number + 1n;
+      return block;
+    },
+    readContract: async (call: Call & { blockNumber?: bigint }) => {
+      const what = `${call.functionName}(${(call.args ?? []).join(", ")})`;
+      requests.push({ method: "readContract", what, blockNumber: call.blockNumber });
+      return read(call, chainAt(call.blockNumber));
+    },
+    multicall: async ({ contracts, blockNumber }: { contracts: Call[]; blockNumber?: bigint }) => {
+      const what = [...new Set(contracts.map((c) => c.functionName))].join(", ");
+      requests.push({ method: "multicall", what, blockNumber });
       multicalls.push(contracts);
-      return contracts.map(read);
+      const state = chainAt(blockNumber);
+      return contracts.map((c) => read(c, state));
     },
   };
-  return { client: client as unknown as PublicClient, multicalls };
+  return { client: client as unknown as PublicClient, multicalls, requests };
+}
+
+/** The same client with every block pin dropped, as loadState read before it pinned its reads. */
+function unpinned(client: PublicClient): PublicClient {
+  const c = client as unknown as Record<"getBlock" | "readContract" | "multicall", (p?: object) => Promise<unknown>>;
+  return {
+    getBlock: () => c.getBlock(),
+    readContract: (p: object) => c.readContract({ ...p, blockNumber: undefined }),
+    multicall: (p: object) => c.multicall({ ...p, blockNumber: undefined }),
+  } as unknown as PublicClient;
 }
 
 function consentOf(state: ChainState) {
@@ -230,11 +299,64 @@ describe("loadState", () => {
   });
 
   it("rejects a submitter that is not an address before reading anything", async () => {
-    const { client, multicalls } = fakeClient();
+    const { client, multicalls, requests } = fakeClient();
     await expect(loadState(client, net, { submitter: "0x1234" })).rejects.toThrow(
       'Submitter must be a 20-byte hex address, got "0x1234"',
     );
     expect(multicalls).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("fetches the block first and pins every read to it, across several pages of invoices and cycles", async () => {
+    const bulk = Array.from({ length: 160 }, (_, i) => ({
+      ...invoices[1],
+      ref: `0x${(i + 4).toString(16).padStart(64, "0")}`,
+      memo: `invoice ${i + 4}`,
+    }));
+    const cycles = Array.from({ length: 151 }, (_, i) => fakeCycle(i));
+    for (const submitter of [undefined, S]) {
+      const { client, requests } = fakeClient({ invoices: [...invoices, ...bulk], cycles });
+      const state = await loadState(client, net, { submitter });
+      expect(state.blockNumber).toBe(SNAPSHOT.number);
+      expect(state.timestamp).toBe(SNAPSHOT.timestamp);
+      expect(state.invoices).toHaveLength(163);
+      expect(state.invoices[162]).toMatchObject({ id: 163n, memo: "invoice 163" });
+      expect(state.cycles).toHaveLength(151);
+      expect(state.cycles[150]).toMatchObject({ id: 150n, timestamp: 1050n, blockNumber: 180n, grossCleared: 50n });
+
+      const head = "invoiceCount, cycleCount, members, supportedTokens";
+      const perMember = "nameOf, balancesOf, isBlacklisted, isSolverFor";
+      expect(requests).toEqual([
+        { method: "getBlock" },
+        { method: "multicall", what: head, blockNumber: 42n },
+        { method: "readContract", what: "getInvoices(1, 150)", blockNumber: 42n },
+        { method: "readContract", what: "getInvoices(151, 150)", blockNumber: 42n },
+        { method: "readContract", what: "getCycles(0, 150)", blockNumber: 42n },
+        { method: "readContract", what: "getCycles(150, 150)", blockNumber: 42n },
+        { method: "multicall", what: perMember, blockNumber: 42n },
+        { method: "multicall", what: "totalCleared, totalCashMoved", blockNumber: 42n },
+      ]);
+    }
+  });
+
+  it("keeps a cycle that settles while it reads out of the state", async () => {
+    // Block 43 arrives right after loadState learns of block 42: a cycle paid invoice 3 and moved deposits.
+    const settled: FakeChain = {
+      invoices: invoices.map((inv, i) => (i === 2 ? { ...inv, status: InvoiceStatus.Paid, outstanding: 0n } : inv)),
+      cycles: [fakeCycle(0)],
+    };
+    const before: FakeChain = { invoices, cycles: [] };
+
+    const state = await loadState(fakeClient(before, settled).client, net);
+    expect(state.blockNumber).toBe(42n);
+    expect(state.cycles).toEqual([]);
+    expect(state.invoices[2]).toMatchObject({ status: InvoiceStatus.Open, outstanding: 5n });
+
+    // Control: the same load without the pins would label block 43's invoices and cycles as block 42.
+    const loose = await loadState(unpinned(fakeClient(before, settled).client), net);
+    expect(loose.blockNumber).toBe(42n);
+    expect(loose.cycles).toHaveLength(1);
+    expect(loose.invoices[2]).toMatchObject({ status: InvoiceStatus.Paid, outstanding: 0n });
   });
 
   it("feeds solverInputFromState the deposits the submitter may draw on", async () => {

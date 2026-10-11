@@ -9,7 +9,8 @@ import type { GraphModel } from "./model.ts";
 
 export const RING_GAP = 5;
 export const RING_WIDTH = 3;
-const MAX_LABEL_CHARS = 18;
+/** Long enough for every demo company's full name ("Ember Hill Roasters" is the longest). */
+const MAX_LABEL_CHARS = 20;
 
 export interface Geometry {
   positions: Map<string, Point>;

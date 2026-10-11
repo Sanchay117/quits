@@ -8,10 +8,11 @@ import {MockFiatToken} from "../../src/mocks/MockFiatToken.sol";
 import {NativeUSDCHarness} from "../mocks/NativeUSDCHarness.sol";
 import {ClearingHouseHandler} from "./ClearingHouseHandler.sol";
 
-/// @notice SPEC invariants 1 to 5 under random sequences of register, issue, accept, reject, cancel, deposit (native,
-///         USDC ERC-20 and EURC), withdraw, settle, time warps and blocklist changes. USDC uses the native-balance
-///         harness, so both USDC deposit paths are exercised. Invariant 6 (pure cycles need no deposits) is a direct
-///         property test in SettleFuzz.t.sol.
+/// @notice SPEC invariants 1 to 5 and 7 under random sequences of register, issue, accept, reject, cancel, setSolver
+///         (allow or revoke anyone, a member or a stranger), deposit (native, USDC ERC-20 and EURC), withdraw, settle
+///         (sent by members and by strangers), time warps and blocklist changes. USDC uses the native-balance harness,
+///         so both USDC deposit paths are exercised. Invariant 6 (pure cycles need no deposits) is a direct property
+///         test in SettleFuzz.t.sol.
 /// @dev Fewer, longer runs than the project default: invoices need several steps (issue, accept, mature) before they
 ///      can clear, so long sequences reach far more settlements (about a dozen per run) for the same number of calls.
 /// forge-config: default.invariant.runs = 128
@@ -34,7 +35,7 @@ contract ClearingHouseInvariantTest is Test {
         handler = new ClearingHouseHandler(house, eurc);
         actors = handler.actors();
 
-        bytes4[] memory selectors = new bytes4[](10);
+        bytes4[] memory selectors = new bytes4[](11);
         selectors[0] = ClearingHouseHandler.register.selector;
         selectors[1] = ClearingHouseHandler.issue.selector;
         selectors[2] = ClearingHouseHandler.accept.selector;
@@ -45,6 +46,7 @@ contract ClearingHouseInvariantTest is Test {
         selectors[7] = ClearingHouseHandler.settle.selector;
         selectors[8] = ClearingHouseHandler.warp.selector;
         selectors[9] = ClearingHouseHandler.toggleBlock.selector;
+        selectors[10] = ClearingHouseHandler.setSolver.selector;
         targetSelector(StdInvariant.FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -95,24 +97,90 @@ contract ClearingHouseInvariantTest is Test {
         }
     }
 
-    /// @dev Every call succeeded or failed exactly when the model said it should.
+    /// @dev 7. A member's deposit never falls in a settle() that it neither sent nor approved the sender of (directly
+    ///      or by approving anyone), judged by the handler's own record of every setSolver call. After every setSolver
+    ///      the contract's isSolverFor must also agree with that record for every member and every address the suite
+    ///      approves.
+    function invariant_7_cashLeavesADepositOnlyWithConsent() public view {
+        assertEq(handler.drawsWithoutConsent(), 0, "a deposit fell in a settle its owner neither sent nor approved");
+        assertEq(handler.approvalMismatches(), 0, "isSolverFor differs from the recorded approvals");
+    }
+
+    /// @dev Every call succeeded or failed exactly when the model said it should, and every refused settle() reverted
+    ///      with exactly the error the model predicted.
     function invariant_contractAgreesWithModel() public view {
         assertEq(handler.modelMismatches(), 0, "the contract and the model disagree about a call");
     }
 
-    /// @dev Shows that the campaign reaches real settlements, not only rejected calls.
-    function afterInvariant() public view {
+    /// @dev Shows that the campaign reaches real settlements, not only rejected calls, and that consent decides calls
+    ///      both ways: deposits are drawn by their owners and by approved senders, and cycles are refused for consent.
+    function _acc(string memory key, uint256 v) private {
+        uint256 cur = vm.envOr(key, uint256(0));
+        vm.setEnv(key, vm.toString(cur + v));
+    }
+
+    function afterInvariant() public {
+        _acc("QX_RUNS", 1);
+        _acc("QX_OK", handler.settlesSucceeded());
+        _acc("QX_REJ", handler.settlesRejected());
+        _acc("QX_CONS", handler.settlesRefusedForConsent());
+        _acc("QX_STR", handler.settlesByStrangers());
+        _acc("QX_PAID", handler.invoicesPaid());
+        _acc("QX_INV", handler.ghostInvoiceCount());
+        _acc("QX_SELF", handler.drawsBySelf());
+        _acc("QX_APPR", handler.drawsByApprovedSender());
+        console.log(
+            string.concat(
+                "AGG runs ",
+                vm.envString("QX_RUNS"),
+                " ok ",
+                vm.envString("QX_OK"),
+                " rej ",
+                vm.envString("QX_REJ"),
+                " cons ",
+                vm.envString("QX_CONS"),
+                " str ",
+                vm.envString("QX_STR")
+            )
+        );
+        console.log(
+            string.concat(
+                "AGG paid ",
+                vm.envString("QX_PAID"),
+                " inv ",
+                vm.envString("QX_INV"),
+                " self ",
+                vm.envString("QX_SELF"),
+                " appr ",
+                vm.envString("QX_APPR")
+            )
+        );
         console.log(
             string.concat(
                 "Last run: ",
                 vm.toString(handler.settlesSucceeded()),
-                " cycles settled, ",
+                " cycles settled (",
+                vm.toString(handler.settlesByStrangers()),
+                " by strangers), ",
                 vm.toString(handler.settlesRejected()),
-                " rejected, ",
+                " rejected (",
+                vm.toString(handler.settlesRefusedForConsent()),
+                " for consent), ",
                 vm.toString(handler.invoicesPaid()),
                 " of ",
                 vm.toString(handler.ghostInvoiceCount()),
                 " invoices paid"
+            )
+        );
+        console.log(
+            string.concat(
+                "Deposits drawn: ",
+                vm.toString(handler.drawsBySelf()),
+                " by the sender itself, ",
+                vm.toString(handler.drawsByApprovedSender()),
+                " by an approved sender; ",
+                vm.toString(handler.approvalChanges()),
+                " setSolver calls"
             )
         );
     }

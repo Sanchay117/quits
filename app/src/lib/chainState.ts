@@ -3,12 +3,15 @@
 // cycle sent from this wallet may draw on its deposit. It is reloaded as soon as the account changes.
 import { loadState, type ChainState } from "../../../core/state.ts";
 import { sameAccount } from "./consent.ts";
-import { latestLoader } from "./loader.ts";
+import { latestLoader, refreshAtLeast } from "./loader.ts";
 import { activeNetwork, isDeployed, publicClient } from "./network.ts";
 import { createStore, useStore } from "./store.ts";
 import { connectedAccount, onAccountChange } from "./wallet.ts";
 
 export const POLL_INTERVAL_MS = 8_000;
+/** After a transaction, how often and how long to re-read while the node still answers from an older block. */
+const BEHIND_RETRIES = 4;
+const BEHIND_WAIT_MS = 750;
 
 export interface ChainSnapshot {
   /** state.submitter is the account it was read for; it can lag the wallet for a moment after a switch. */
@@ -29,10 +32,22 @@ const load = latestLoader({
   onError: (err) => chainStore.set({ error: errorText(err), loading: false }),
 });
 
-/** Loads the state now. Concurrent calls for the same account share one request. */
-export function refreshChain(): Promise<void> {
+export interface ChainRefresh {
+  /** Start a new read even if one is running (it may have started before a transaction was mined). */
+  force?: boolean;
+  /** Keep re-reading, briefly, until the state has reached this block (the block of a transaction just sent). */
+  atLeastBlock?: bigint;
+}
+
+/** Loads the state now. Concurrent calls for the same account share one request unless `force` is set. */
+export function refreshChain({ force = false, atLeastBlock }: ChainRefresh = {}): Promise<void> {
   if (!isDeployed) return Promise.resolve();
-  return load();
+  return refreshAtLeast(load, () => chainStore.get().state?.blockNumber ?? null, {
+    force,
+    atLeastBlock,
+    retries: BEHIND_RETRIES,
+    wait: () => new Promise((resolve) => window.setTimeout(resolve, BEHIND_WAIT_MS)),
+  });
 }
 
 function errorText(err: unknown): string {

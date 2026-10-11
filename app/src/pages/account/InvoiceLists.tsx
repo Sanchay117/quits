@@ -1,11 +1,12 @@
 // The member's invoices: an inbox to accept or reject, sent ones to cancel, and open receivables and payables.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Hex } from "viem";
 import { InvoiceStatus, lc, type ChainState, type Invoice } from "../../../../core/state.ts";
 import { Empty, Party } from "../../components/common.tsx";
 import { TxStatus } from "../../components/TxStatus.tsx";
-import { acceptAll, invoiceAction } from "../../lib/actions.ts";
+import { acceptShown, invoiceAction } from "../../lib/actions.ts";
 import { formatDate, refToText } from "../../lib/format.ts";
+import { arrivedSince, idList, skippedText, totalsText } from "../../lib/inbox.ts";
 import { formatMoney } from "../../lib/money.ts";
 import { activeNetwork } from "../../lib/network.ts";
 import { symbolOf } from "../../lib/tokens.ts";
@@ -71,27 +72,79 @@ function InvoiceTable({ invoices, state, counterparty, showOutstanding, actions 
   );
 }
 
+interface AcceptAllConfirmProps {
+  /** The invoices on screen when the member clicked Accept all: exactly these, and no others, may be accepted. */
+  shown: Invoice[];
+  /** The inbox as it is now, to point out invoices that arrived after the click. */
+  inbox: Invoice[];
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export function AcceptAllConfirm({ shown, inbox, busy, onConfirm, onCancel }: AcceptAllConfirmProps) {
+  const arrived = arrivedSince(shown, inbox);
+  const totals = totalsText(shown, (token) => symbolOf(activeNetwork, token));
+  return (
+    <div className="confirm" role="group" aria-label="Confirm accepting all">
+      <p>
+        Accept {shown.length} invoices, {idList(shown.map((inv) => inv.id))}, for {totals}? Each becomes a debt that
+        netting can clear once it is due. Each is checked again on chain just before you sign, and any that changed is
+        left out.
+      </p>
+      {arrived.length > 0 && (
+        <p className="small muted">
+          Not included: {idList(arrived)}, which arrived after you clicked Accept all. Review {arrived.length === 1 ? "it" : "them"}{" "}
+          in the list.
+        </p>
+      )}
+      <div className="button-row">
+        <button type="button" className="button button--small" disabled={busy} onClick={onConfirm}>
+          Accept these {shown.length}
+        </button>
+        <button type="button" className="button button--small button--ghost" disabled={busy} onClick={onCancel}>
+          Back
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Inbox({ state, invoices, tx }: { state: ChainState; invoices: Invoice[]; tx: TxHandle }) {
+  // A snapshot taken on click: later polls can change the inbox, but never what this confirmation accepts.
+  const [confirming, setConfirming] = useState<Invoice[] | null>(null);
   const act = (action: "acceptInvoice" | "rejectInvoice", inv: Invoice) =>
     tx.run(`${action === "acceptInvoice" ? "Accept" : "Reject"} invoice #${inv.id}`, async (ctx, report) => {
       await invoiceAction(ctx, action, inv.id, report);
     });
-  const acceptEverything = () =>
-    tx.run(`Accept ${invoices.length} invoices`, async (ctx, report) => {
-      await acceptAll(ctx, invoices.map((inv) => inv.id), report);
-      return `Accepted ${invoices.length} invoices${activeNetwork.multicall3From ? " in one transaction" : ""}.`;
+  const acceptConfirmed = (shown: Invoice[]) =>
+    tx.run(`Accept ${shown.length} invoices`, async (ctx, report) => {
+      const { ids, skipped } = await acceptShown(ctx, shown, report);
+      setConfirming(null);
+      const how = activeNetwork.multicall3From && ids.length > 1 ? " in one transaction" : "";
+      const accepted = `Accepted ${ids.length === 1 ? "1 invoice" : `${ids.length} invoices`}${how}.`;
+      return skipped.length > 0 ? `${accepted} ${skippedText(skipped)}` : accepted;
     });
 
   return (
     <div className="subsection">
       <div className="subsection-head">
         <h3>Waiting for you</h3>
-        {invoices.length > 1 && (
-          <button type="button" className="button button--small" disabled={tx.busy} onClick={() => void acceptEverything()}>
+        {invoices.length > 1 && !confirming && (
+          <button type="button" className="button button--small" disabled={tx.disabled} onClick={() => setConfirming(invoices)}>
             Accept all {invoices.length}
           </button>
         )}
       </div>
+      {confirming && (
+        <AcceptAllConfirm
+          shown={confirming}
+          inbox={invoices}
+          busy={tx.disabled}
+          onConfirm={() => void acceptConfirmed(confirming)}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
       {invoices.length === 0 ? (
         <Empty>No invoices waiting for you.</Empty>
       ) : (
@@ -101,10 +154,10 @@ function Inbox({ state, invoices, tx }: { state: ChainState; invoices: Invoice[]
           counterparty="creditor"
           actions={(inv) => (
             <div className="button-row">
-              <button type="button" className="button button--small" disabled={tx.busy} onClick={() => void act("acceptInvoice", inv)}>
+              <button type="button" className="button button--small" disabled={tx.disabled} onClick={() => void act("acceptInvoice", inv)}>
                 Accept
               </button>
-              <button type="button" className="button button--small button--ghost" disabled={tx.busy} onClick={() => void act("rejectInvoice", inv)}>
+              <button type="button" className="button button--small button--ghost" disabled={tx.disabled} onClick={() => void act("rejectInvoice", inv)}>
                 Reject
               </button>
             </div>
@@ -163,7 +216,7 @@ export function InvoiceLists({ state, me }: { state: ChainState; me: Hex }) {
             state={state}
             counterparty="debtor"
             actions={(inv) => (
-              <button type="button" className="button button--small button--ghost" disabled={tx.busy} onClick={() => void cancel(inv)}>
+              <button type="button" className="button button--small button--ghost" disabled={tx.disabled} onClick={() => void cancel(inv)}>
                 Cancel
               </button>
             )}

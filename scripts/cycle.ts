@@ -1,6 +1,8 @@
-// Runs one netting cycle: reads the whole contract state, solves for the largest amount that can clear with the
-// least cash (core/solver.ts), prints the plan, checks it against settle()'s rules, and calls settle(). Anyone may
-// submit a cycle; by default the deployer does.
+// Runs one netting cycle: reads the whole contract state for the account that will submit it, solves for the largest
+// amount that can clear with the least cash (core/solver.ts), prints the plan, checks it against settle()'s rules, and
+// calls settle(). Anyone may submit a cycle; by default the deployer does. settle() only draws cash from members that
+// are the submitter or approved it (or anyone) with setSolver, so the solver only counts those members' deposits; the
+// others still take part in cash-free netting.
 import { encodeFunctionData, parseEventLogs } from "viem";
 import { clearingHouseAbi } from "../core/abi.ts";
 import { MAX_BATCH, checkSolution, grossSettlementCash, solve, solverInputFromState } from "../core/solver.ts";
@@ -21,7 +23,12 @@ const spec: ScriptSpec = {
     { name: "from", type: "string", placeholder: "deployer|company name", default: "deployer", description: "Who submits settle()" },
     ...SEND_OPTIONS,
   ],
-  examples: ["node scripts/cycle.ts", "node scripts/cycle.ts --network mainnet          # plan only", "node scripts/cycle.ts --network mainnet --yes"],
+  examples: [
+    "node scripts/cycle.ts",
+    'node scripts/cycle.ts --from "Fernway Cafes" --dry-run',
+    "node scripts/cycle.ts --network mainnet          # plan only",
+    "node scripts/cycle.ts --network mainnet --yes",
+  ],
 };
 
 runScript(async () => {
@@ -29,22 +36,39 @@ runScript(async () => {
   const ctx = await connect(args);
   const house = requireClearingHouse(ctx);
   const token = resolveToken(ctx, args.get("token"));
+  const tokenKey = token.toLowerCase();
   const symbol = tokenSymbol(ctx, token);
   const fmt = (units: bigint) => money(units, symbol);
   const submitter = pickSubmitter(ctx.net.name, args.get("from") ?? "deployer");
 
   heading(`Netting cycle for ${symbol} on ${ctx.net.label}`);
-  const state = await readState(ctx);
+  console.log(`  Submitter: ${submitter.label} ${submitter.address}`);
+  const state = await readState(ctx, { submitter: submitter.address });
   const label = (address: string) => {
     const member = state.members[address.toLowerCase()];
     return member?.name || short(address);
   };
+  const depositOf = (address: string) => state.members[address.toLowerCase()]?.balances[tokenKey] ?? 0n;
   const input = solverInputFromState(state, token);
   const result = solve(input);
   const byId = new Map(state.invoices.map((i) => [i.id, i]));
 
-  console.log(`  State at block ${state.blockNumber}: ${Object.keys(state.members).length} members, ${state.invoices.length} invoices, ${state.cycles.length} cycles so far`);
+  const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+  console.log(
+    `  State at block ${state.blockNumber}: ${count(Object.keys(state.members).length, "member")}, ` +
+      `${count(state.invoices.length, "invoice")}, ${count(state.cycles.length, "cycle")} so far`,
+  );
   console.log(`  Eligible now (open, due, ${symbol}): ${input.obligations.length} invoices, ${fmt(grossSettlementCash(input.obligations))} outstanding`);
+  const involved = new Set(input.obligations.flatMap((o) => [o.debtor, o.creditor]));
+  const withheld = Object.values(state.members).filter(
+    (m) => involved.has(m.address.toLowerCase()) && !m.drawableBySubmitter && depositOf(m.address) > 0n,
+  );
+  if (withheld.length) {
+    console.log(
+      `  Not drawable by this submitter (no setSolver for it or for anyone): ${withheld.map((m) => `${label(m.address)} ${fmt(depositOf(m.address))}`).join(", ")}.` +
+        " They still take part in cash-free netting.",
+    );
+  }
 
   if (result.clears.length > MAX_BATCH) {
     fail(
@@ -56,8 +80,11 @@ runScript(async () => {
   if (!check.ok) {
     if (check.errors[0]?.startsWith("EmptySolution")) {
       section("Nothing to settle");
-      console.log(`  ${check.errors[0]}`);
-      console.log("  (No accepted, matured invoice can clear with the deposits members hold.)");
+      console.log(
+        input.obligations.length === 0
+          ? "  No accepted, matured invoices are waiting."
+          : "  None of the eligible invoices can clear: they are not on a loop, and their payers' deposits are empty or not drawable by this submitter.",
+      );
       return;
     }
     fail(`The solution breaks settle()'s rules, not sending:\n  ${check.errors.join("\n  ")}`);
@@ -76,7 +103,9 @@ runScript(async () => {
     ),
   );
   const skipped = input.obligations.filter((o) => !result.clears.some((c) => c.id === o.id));
-  if (skipped.length) console.log(`  Left open: ${skipped.map((o) => `#${o.id}`).join(", ")} (no room in the payers' deposits)`);
+  if (skipped.length) {
+    console.log(`  Left open: ${skipped.map((o) => `#${o.id}`).join(", ")} (the payers' drawable deposits cannot cover more)`);
+  }
 
   section("Net positions (what actually moves)");
   const nets = Object.entries(result.nets).sort(([, a], [, b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -84,7 +113,7 @@ runScript(async () => {
     table(
       ["Member", "Deposit", "Net", "Deposit after"],
       nets.map(([member, net]) => {
-        const deposit = input.liquidity[member] ?? 0n;
+        const deposit = depositOf(member);
         const sign = net > 0n ? "+" : "";
         return [label(member), fmt(deposit), net === 0n ? fmt(0n) : `${sign}${fmt(net)}`, fmt(deposit + net)];
       }),
@@ -96,7 +125,7 @@ runScript(async () => {
   const saved = result.gross - result.cash;
   console.log(`  Gross cleared:  ${fmt(result.gross)} across ${result.clears.length} invoices and ${nets.length} members`);
   console.log(`  Cash moved:     ${fmt(result.cash)}`);
-  console.log(`  Saved:          ${fmt(saved)} (${pct(saved, result.gross)} of the cleared value never moves)`);
+  console.log(`  Netted away:    ${fmt(saved)} (${pct(saved, result.gross)} of the cleared value never moves)`);
   if (result.uncleared > 0n) console.log(`  Still open after this cycle: ${fmt(result.uncleared)}`);
 
   const data = encodeFunctionData({
@@ -120,19 +149,22 @@ runScript(async () => {
 
   const receipt = await sendTx(ctx, { from: submitter, to: house, data, label: `settle(): ${result.clears.length} invoices, ${fmt(result.gross)}` });
   const [settled] = parseEventLogs({ abi: clearingHouseAbi, logs: receipt.logs, eventName: "CycleSettled" });
-  if (!settled) fail("settle() succeeded but emitted no CycleSettled event");
+  if (!settled) {
+    ctx.ledger.print(ctx);
+    fail("settle() succeeded but emitted no CycleSettled event");
+  }
   const { cycleId, grossCleared, cashMoved, invoiceCount, memberCount } = settled.args;
   section(`Cycle #${cycleId} settled`);
   console.log(`  ${int(invoiceCount)} invoices, ${int(memberCount)} members`);
-  console.log(`  Gross cleared ${fmt(grossCleared)}, cash moved ${fmt(cashMoved)}, saved ${fmt(grossCleared - cashMoved)} (${pct(grossCleared - cashMoved, grossCleared)})`);
-  if (grossCleared !== result.gross || cashMoved !== result.cash) fail("On-chain totals differ from the plan");
+  console.log(`  Gross cleared ${fmt(grossCleared)}, cash moved ${fmt(cashMoved)}, netted away ${fmt(grossCleared - cashMoved)} (${pct(grossCleared - cashMoved, grossCleared)})`);
   ctx.ledger.print(ctx);
+  if (grossCleared !== result.gross || cashMoved !== result.cash) fail("On-chain totals differ from the plan");
 });
 
 function pickSubmitter(network: Parameters<typeof loadDeployer>[0], from: string): Signer & { label: string } {
   if (from === "deployer") {
     const deployer = loadDeployer(network);
-    return { ...deployer, label: `the deployer ${short(deployer.address)}` };
+    return { ...deployer, label: "the deployer" };
   }
   if (!hasCompanies(network)) fail(`--from "${from}": there is no company wallets file for ${network}`);
   const company = loadCompanies(network).find((c) => c.name.toLowerCase() === from.toLowerCase());

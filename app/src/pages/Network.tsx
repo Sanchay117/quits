@@ -1,19 +1,23 @@
 // Network: the live graph of members and open invoices, and a solver panel that previews and settles a cycle.
+// The preview is computed for the connected wallet as sender: settle() takes cash only from members who approved it.
 import { useMemo, useState } from "react";
-import { MAX_BATCH, solverInputFromState } from "../../../core/solver.ts";
+import { MAX_BATCH, solverInputFromState, type SolveInput } from "../../../core/solver.ts";
 import { lc, type ChainState } from "../../../core/state.ts";
 import { Badge, Empty, Notice, NotDeployed, PageHeader, Party, Spinner, Stat } from "../components/common.tsx";
 import { TxStatus } from "../components/TxStatus.tsx";
 import { CollapseView } from "../graph/CollapseView.tsx";
 import { settle } from "../lib/actions.ts";
 import { useChain } from "../lib/chainState.ts";
+import { depositsLeftOut, sameAccount, SOLVER_ACCESS_LABEL, solverAccess, type SolverAccess } from "../lib/consent.ts";
 import { decomposeNets } from "../lib/flows.ts";
 import { debtsFromState, nameResolver, openPositions, partiesFromState } from "../lib/live.ts";
 import { formatMoney, nettedAway, type TokenSymbol } from "../lib/money.ts";
-import { nettingModel, runSolver, type Netting } from "../lib/netting.ts";
+import { exceedsBatch, limitToBatch, nettingModel, runSolver, type Netting } from "../lib/netting.ts";
 import { activeNetwork, isDeployed } from "../lib/network.ts";
+import { viewAsHref } from "../lib/router.ts";
 import { tokensOf, type TokenInfo } from "../lib/tokens.ts";
 import { useTx } from "../lib/useTx.ts";
+import { connectWallet, ignoreRejection, useWallet } from "../lib/wallet.ts";
 
 const TOKENS = tokensOf(activeNetwork);
 
@@ -26,7 +30,10 @@ export function NetworkPage() {
     <>
       <PageHeader
         title="Network"
-        lead={`Members and open invoices on ${activeNetwork.label}. Anyone can compute a netting cycle and settle it.`}
+        lead={
+          `Members and open invoices on ${activeNetwork.label}. Anyone can compute and send a netting cycle; ` +
+          "it takes cash only from members who approved the sender."
+        }
       >
         {TOKENS.length > 1 && <TokenSwitch value={symbol} onChange={setSymbol} />}
       </PageHeader>
@@ -63,10 +70,11 @@ function clearsKey(netting: Netting | null): string {
 
 function LiveNetwork({ state, token }: { state: ChainState; token: TokenInfo }) {
   const [previewing, setPreviewing] = useState(false);
-  const netting = useMemo(
-    () => (previewing ? runSolver(solverInputFromState(state, token.address)) : null),
-    [previewing, state, token.address],
-  );
+  const [batchOnly, setBatchOnly] = useState(false);
+  // Deposits count as liquidity only for members that let this wallet (state.submitter) draw on them.
+  const input = useMemo(() => solverInputFromState(state, token.address), [state, token.address]);
+  const solved = useMemo(() => (batchOnly ? limitToBatch(input) : input), [batchOnly, input]);
+  const netting = useMemo(() => (previewing ? runSolver(solved) : null), [previewing, solved]);
   const model = useMemo(() => {
     const parties = partiesFromState(state, token.address);
     const debts = debtsFromState(state, token.address);
@@ -89,7 +97,16 @@ function LiveNetwork({ state, token }: { state: ChainState; token: TokenInfo }) 
             />
           )}
         </div>
-        <SolverPanel state={state} token={token} netting={netting} onCompute={() => setPreviewing(true)} />
+        <SolverPanel
+          state={state}
+          token={token}
+          eligible={input.obligations.length}
+          input={solved}
+          netting={netting}
+          batchOnly={batchOnly}
+          onCompute={() => setPreviewing(true)}
+          onBatch={() => setBatchOnly(true)}
+        />
       </div>
       <MembersTable state={state} token={token} />
     </>
@@ -112,18 +129,22 @@ function GraphNote({ previewing }: { previewing: boolean }) {
 interface SolverPanelProps {
   state: ChainState;
   token: TokenInfo;
+  /** Accepted, due invoices of this token. */
+  eligible: number;
+  /** What the solver ran on: every eligible invoice, or the MAX_BATCH oldest when batchOnly. */
+  input: SolveInput;
   netting: Netting | null;
+  batchOnly: boolean;
   onCompute: () => void;
+  onBatch: () => void;
 }
 
-function SolverPanel({ state, token, netting, onCompute }: SolverPanelProps) {
-  const eligible = useMemo(
-    () => solverInputFromState(state, token.address).obligations.length,
-    [state, token.address],
-  );
-  if (!netting) return <ComputePrompt eligible={eligible} symbol={token.symbol} onCompute={onCompute} />;
-  return <NettingPreview state={state} token={token} netting={netting} />;
+function SolverPanel({ eligible, netting, onCompute, ...rest }: SolverPanelProps) {
+  if (!netting) return <ComputePrompt eligible={eligible} symbol={rest.token.symbol} onCompute={onCompute} />;
+  return <NettingPreview {...rest} netting={netting} />;
 }
+
+const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
 
 function ComputePrompt({ eligible, symbol, onCompute }: { eligible: number; symbol: TokenSymbol; onCompute: () => void }) {
   const due = eligible === 1 ? "invoice is" : "invoices are";
@@ -143,13 +164,31 @@ function ComputePrompt({ eligible, symbol, onCompute }: { eligible: number; symb
   );
 }
 
-function NettingPreview({ state, token, netting }: { state: ChainState; token: TokenInfo; netting: Netting }) {
+export interface NettingPreviewProps {
+  state: ChainState;
+  token: TokenInfo;
+  input: SolveInput;
+  netting: Netting;
+  batchOnly: boolean;
+  onBatch: () => void;
+}
+
+export function NettingPreview({ state, token, input, netting, batchOnly, onBatch }: NettingPreviewProps) {
   const tx = useTx();
+  const wallet = useWallet();
   const { result, verified, errors, millis } = netting;
   const money = (units: bigint) => formatMoney(units, token.symbol);
-  const tooLarge = result.clears.length > MAX_BATCH;
+  const tooLarge = exceedsBatch(result);
+  const leftOut = depositsLeftOut(state, token.address, input);
+  // The preview counts the deposits this wallet may draw on; until the state is read for it, it is not the wallet's.
+  const forThisWallet = sameAccount(state.submitter, wallet.address);
+  // Right after a cycle settles, this preview is still the one it just sent until the state from its block arrives.
+  const catchingUp = tx.progress.blockNumber !== undefined && state.blockNumber < tx.progress.blockNumber;
   const sendSettle = () =>
     tx.run("Settle cycle", async (ctx, report) => {
+      if (!sameAccount(state.submitter, ctx.account)) {
+        throw new Error("Your wallet account changed after this preview was computed. Wait for it to update, then settle.");
+      }
       const cycleId = await settle(ctx, token.address, result.clears, report);
       return cycleId === null ? undefined : `Cycle #${cycleId} settled and final.`;
     });
@@ -165,30 +204,65 @@ function NettingPreview({ state, token, netting }: { state: ChainState; token: T
           note={`${nettedAway(result.gross, result.cash)} netted away`}
         />
       </div>
+      {batchOnly && (
+        <p className="small muted">
+          Limited to the {MAX_BATCH} oldest due invoices. The rest can clear in the next cycle.
+        </p>
+      )}
       {result.uncleared > 0n && (
         <p className="small muted">
-          {money(result.uncleared)} stays open: net payers' deposits do not cover more.
+          {money(result.uncleared)} stays open: the deposits this cycle may draw on do not cover more.
+        </p>
+      )}
+      {leftOut.count > 0 && (
+        <p className="small muted">
+          Left out: {money(leftOut.total)} in deposits of {leftOut.count} {plural(leftOut.count, "member", "members")}{" "}
+          {state.submitter
+            ? `who ${plural(leftOut.count, "has", "have")} not approved your wallet.`
+            : `who ${plural(leftOut.count, "allows", "allow")} only approved solvers.`}{" "}
+          <a href="#/how">Why</a>
         </p>
       )}
       <Transfers netting={netting} symbol={token.symbol} nameOf={nameResolver(state)} />
-      <p className={`check ${verified ? "check--ok" : "check--bad"}`}>
-        {verified ? `Checked against settle()'s rules. Solved in ${millis.toFixed(1)} ms.` : errors[0]}
-      </p>
-      {tooLarge && (
+      {tooLarge ? (
         <Notice tone="warn">
-          More than {MAX_BATCH} invoices would clear; settle() takes at most {MAX_BATCH}.
+          <p className="notice-title">Too many invoices for one transaction</p>
+          <p>
+            This cycle would clear {result.clears.length} invoices, but settle() takes at most {MAX_BATCH}, so
+            sending it would revert. Settle it in parts, starting with the {MAX_BATCH} oldest due invoices.
+          </p>
+          <button type="button" className="button button--small" onClick={onBatch}>
+            Compute a {MAX_BATCH}-invoice cycle
+          </button>
         </Notice>
+      ) : (
+        <p className={`check ${verified ? "check--ok" : "check--bad"}`}>
+          {verified ? `Checked against settle()'s rules. Solved in ${millis.toFixed(1)} ms.` : errors[0]}
+        </p>
       )}
-      <button
-        type="button"
-        className="button"
-        onClick={() => void sendSettle()}
-        disabled={tx.busy || !verified || tooLarge || result.clears.length === 0}
-      >
-        Settle on Arc
-      </button>
+      {!wallet.available ? (
+        <p className="small muted">Install a browser wallet such as MetaMask to settle this cycle.</p>
+      ) : !wallet.address ? (
+        <button type="button" className="button" onClick={ignoreRejection(connectWallet)} disabled={wallet.connecting}>
+          {wallet.connecting ? "Connecting…" : "Connect wallet to settle"}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="button"
+          onClick={() => void sendSettle()}
+          disabled={tx.busy || catchingUp || !forThisWallet || !verified || tooLarge || result.clears.length === 0}
+        >
+          Settle on Arc
+        </button>
+      )}
       <p className="small muted">
-        Anyone may send this. The contract re-checks every rule; a cycle settles fully or not at all.
+        {catchingUp
+          ? "Reading the network as it stands after your cycle…"
+          : wallet.address && !forThisWallet
+            ? "Updating the preview for your wallet…"
+            : "The contract re-checks every rule, including that each member who pays cash approved the sender. " +
+              "A cycle settles fully or not at all."}
       </p>
       <TxStatus progress={tx.progress} />
       {tx.progress.phase === "success" && (
@@ -233,7 +307,14 @@ function MemberStatus({ blocked, registered }: { blocked: boolean; registered: b
   return registered ? <Badge tone="good">Member</Badge> : <Badge>Unregistered</Badge>;
 }
 
-function MembersTable({ state, token }: { state: ChainState; token: TokenInfo }) {
+const ACCESS_TONE: Record<SolverAccess, "accent" | "good" | "neutral"> = {
+  anyone: "accent",
+  you: "good",
+  "approved-you": "good",
+  "approved-only": "neutral",
+};
+
+export function MembersTable({ state, token }: { state: ChainState; token: TokenInfo }) {
   const positions = openPositions(state, token.address);
   const members = Object.values(state.members);
   const key = lc(token.address);
@@ -242,6 +323,10 @@ function MembersTable({ state, token }: { state: ChainState; token: TokenInfo })
   return (
     <section className="section">
       <h2 className="section-title">Members</h2>
+      <p className="muted small">
+        Solvers: who may send cycles that pay this member's net debts from its deposit. Cycles that take no cash from
+        it need no approval. View opens a member's Account page read-only, with no wallet needed.
+      </p>
       <div className="table-wrap">
         <table>
           <thead>
@@ -251,12 +336,16 @@ function MembersTable({ state, token }: { state: ChainState; token: TokenInfo })
               <th className="num">Owed to them</th>
               <th className="num">They owe</th>
               <th className="num">Net</th>
+              <th>Solvers</th>
               <th>Status</th>
+              <th>Account</th>
             </tr>
           </thead>
           <tbody>
             {members.map((m) => {
               const { receivable, payable } = positions.get(lc(m.address)) ?? { receivable: 0n, payable: 0n };
+              const access = solverAccess(m, state.submitter);
+              const who = m.name || m.address;
               return (
                 <tr key={m.address}>
                   <td>
@@ -267,7 +356,15 @@ function MembersTable({ state, token }: { state: ChainState; token: TokenInfo })
                   <td className="num">{money(payable)}</td>
                   <td className="num">{money(receivable - payable, true)}</td>
                   <td>
+                    <Badge tone={ACCESS_TONE[access]}>{SOLVER_ACCESS_LABEL[access]}</Badge>
+                  </td>
+                  <td>
                     <MemberStatus blocked={m.blocked[key] ?? false} registered={m.registered} />
+                  </td>
+                  <td>
+                    <a href={viewAsHref(m.address)} aria-label={`View the account of ${who}, read-only`}>
+                      View
+                    </a>
                   </td>
                 </tr>
               );

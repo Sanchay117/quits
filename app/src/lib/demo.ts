@@ -1,5 +1,6 @@
 // The built-in sample network shown on Home until a real cycle exists on chain. These are simulated companies of our
-// own, not customers, and every screen that shows them says so.
+// own, not customers, and every screen that shows them says so. They carry the names of the seven demo companies the
+// scripts seed on chain (scripts/lib/demo.ts), so the simulation and the live network tell one story.
 import { keccak256, stringToHex } from "viem";
 import { UNITS_PER_TOKEN } from "./money.ts";
 import type { Debt, Party } from "./netting.ts";
@@ -11,14 +12,14 @@ export function simulatedAddress(name: string): string {
 
 const cents = (value: number) => (BigInt(value) * UNITS_PER_TOKEN) / 100n;
 
-const COMPANIES = {
-  freight: "Tidewater Freight",
+export const COMPANIES = {
+  freight: "Kestrel Freight",
   packaging: "Boxwell Packaging",
-  roaster: "Ember Roasters",
-  cafes: "Juniper Cafes",
-  studio: "Studio Meridian",
-  print: "Halftone Print",
-  dairy: "Greenleaf Dairy",
+  roaster: "Ember Hill Roasters",
+  cafes: "Fernway Cafes",
+  studio: "Halftone Studio",
+  print: "Inkline Print Shop",
+  dairy: "Meadowgate Dairy",
 } as const;
 
 type Company = keyof typeof COMPANIES;

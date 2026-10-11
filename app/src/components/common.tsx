@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { explorerAddress } from "../../../core/chains.ts";
 import { displayName, shortAddress } from "../lib/format.ts";
-import { activeNetwork, allNetworks, networkHref } from "../lib/network.ts";
+import { activeNetwork, networkHref, shownNetworks } from "../lib/network.ts";
 
 export function Party({ address, name }: { address: string; name?: string }) {
   const link = explorerAddress(activeNetwork, address);
@@ -52,7 +52,7 @@ export function Badge({ tone = "neutral", children }: { tone?: Tone; children: R
   return <span className={`badge badge--${tone}`}>{children}</span>;
 }
 
-export function Notice({ tone = "neutral", children }: { tone?: "neutral" | "warn" | "bad"; children: ReactNode }) {
+export function Notice({ tone = "neutral", children }: { tone?: "neutral" | "accent" | "warn" | "bad"; children: ReactNode }) {
   return <div className={`notice notice--${tone}`}>{children}</div>;
 }
 
@@ -62,7 +62,7 @@ export function Empty({ children }: { children: ReactNode }) {
 
 /** Shown wherever live data is needed but the contract has no address on this network yet. */
 export function NotDeployed({ what }: { what: string }) {
-  const elsewhere = allNetworks.filter((net) => net.clearingHouse && net.name !== activeNetwork.name);
+  const elsewhere = shownNetworks.filter((net) => net.clearingHouse && net.name !== activeNetwork.name);
   return (
     <div className="card not-deployed">
       <h2>Not deployed on {activeNetwork.label} yet</h2>

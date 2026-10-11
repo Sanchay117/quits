@@ -1,6 +1,7 @@
 // The network this page talks to (chosen with ?network=), its viem chain and its public client.
 import { createPublicClient, defineChain, http, type Chain, type PublicClient } from "viem";
 import { networks, type ArcNetwork, type NetworkName } from "../../../core/chains.ts";
+import { networksToList } from "./site.ts";
 
 const NETWORK_NAMES = Object.keys(networks) as NetworkName[];
 
@@ -38,7 +39,12 @@ export function networkHref(name: NetworkName): string {
 export const activeNetwork: ArcNetwork = networkFromSearch(window.location.search);
 export const activeChain: Chain = viemChain(activeNetwork);
 export const isDeployed = activeNetwork.clearingHouse !== null;
-export const allNetworks: ArcNetwork[] = NETWORK_NAMES.map((name) => networks[name]);
+/** What the network picker and the "Live on" lists offer: no local anvil chain in a production build. */
+export const shownNetworks: ArcNetwork[] = networksToList(
+  NETWORK_NAMES.map((name) => networks[name]),
+  activeNetwork,
+  import.meta.env.PROD,
+);
 
 export const publicClient = createPublicClient({
   chain: activeChain,

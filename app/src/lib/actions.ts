@@ -3,7 +3,9 @@ import { encodeFunctionData, parseEventLogs, parseSignature, stringToHex, type H
 import { clearingHouseAbi } from "../../../core/abi.ts";
 import { NATIVE_SCALE, type ArcNetwork } from "../../../core/chains.ts";
 import type { Clear } from "../../../core/solver.ts";
+import type { Invoice, InvoiceStatus } from "../../../core/state.ts";
 import { fiatTokenAbi, memoAbi, multicall3FromAbi, permitTypes } from "./abis.ts";
+import { recheckShown, skippedText, type FreshInvoice, type Recheck } from "./inbox.ts";
 import { isUserRejection, sendCall, type Call, type Report, type WriteContext } from "./tx.ts";
 
 export interface ActionContext extends WriteContext {
@@ -154,6 +156,46 @@ export async function invoiceAction(ctx: ActionContext, action: InvoiceAction, i
   await sendCall(ctx, { to: house(ctx), data }, report);
 }
 
+/** Reads invoices straight from the contract (one batched call), bypassing the polled state. */
+async function readInvoices(ctx: ActionContext, ids: bigint[]): Promise<Map<bigint, FreshInvoice>> {
+  const address = house(ctx);
+  const results = await ctx.publicClient.multicall({
+    allowFailure: false,
+    multicallAddress: ctx.net.multicall3,
+    contracts: ids.map((id) => ({ address, abi: clearingHouseAbi, functionName: "getInvoice" as const, args: [id] as const })),
+  });
+  return new Map(
+    ids.map((id, i) => {
+      const r = results[i] as { creditor: Hex; debtor: Hex; token: Hex; amount: bigint; dueDate: bigint; status: number };
+      const fresh: FreshInvoice = {
+        creditor: r.creditor,
+        debtor: r.debtor,
+        token: r.token,
+        amount: r.amount,
+        dueDate: r.dueDate,
+        status: r.status as InvoiceStatus,
+      };
+      return [id, fresh];
+    }),
+  );
+}
+
+/**
+ * Accepts exactly the invoices the member was shown. Right before sending, each is read back from the chain and kept
+ * only if it is still Pending, addressed to the sending account and unchanged; the others are skipped and returned.
+ * Nothing is sent if none is left.
+ */
+export async function acceptShown(ctx: ActionContext, shown: Invoice[], report: Report): Promise<Recheck> {
+  report({ phase: "preparing" });
+  const fresh = await readInvoices(ctx, shown.map((inv) => inv.id));
+  const recheck = recheckShown(shown, fresh, ctx.account);
+  if (recheck.ids.length === 0) {
+    throw new Error(`Nothing was sent: none of these invoices is still waiting for you. ${skippedText(recheck.skipped)}`);
+  }
+  await acceptAll(ctx, recheck.ids, report);
+  return recheck;
+}
+
 /** Accepts several invoices in one transaction through Multicall3From when available, otherwise one by one. */
 export async function acceptAll(ctx: ActionContext, ids: bigint[], report: Report): Promise<void> {
   const target = house(ctx);
@@ -177,7 +219,19 @@ export async function acceptAll(ctx: ActionContext, ids: bigint[], report: Repor
 // Netting
 // ----------------------------------------------------------------------------------------------------------------
 
-/** Sends a netting solution. Anyone may call settle(); the contract re-checks every rule. Returns the cycle id. */
+/**
+ * Allows (or stops allowing) `solver` to send cycles that draw cash from the caller's deposit. ANY_SOLVER (the zero
+ * address) means anyone.
+ */
+export async function setSolver(ctx: ActionContext, solver: Hex, allowed: boolean, report: Report): Promise<void> {
+  const data = encodeFunctionData({ ...HOUSE, functionName: "setSolver", args: [solver, allowed] });
+  await sendCall(ctx, { to: house(ctx), data }, report);
+}
+
+/**
+ * Sends a netting solution. Anyone may call settle(), but it reverts (PayerNotConsenting) if a member that pays net
+ * cash has not approved the sender; the contract re-checks every rule. Returns the cycle id.
+ */
 export async function settle(ctx: ActionContext, token: Hex, clears: Clear[], report: Report): Promise<bigint | null> {
   const ids = clears.map((c) => c.id);
   const amounts = clears.map((c) => c.amount);
