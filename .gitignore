@@ -13,3 +13,7 @@ contracts/cache-*/
 contracts/deployments/*-local*
 app/tsconfig.tsbuildinfo
 contracts/broadcast/**/dry-run/
+video/node_modules/
+video/out/
+video/public/audio/
+video/public/music.wav

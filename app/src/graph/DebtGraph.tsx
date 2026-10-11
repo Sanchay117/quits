@@ -6,7 +6,7 @@ import type { Flow } from "../lib/flows.ts";
 import { initials } from "../lib/format.ts";
 import { useElementWidth, usePrefersReducedMotion } from "../lib/hooks.ts";
 import { formatMoney, scaleByFraction } from "../lib/money.ts";
-import { arrowHead, clamp01, curveBetween, easeInOutCubic, share, staggered } from "./geometry.ts";
+import { arrowHead, clamp01, curveBetween, easeInOutCubic, quadraticPoint, share, staggered, type Curve } from "./geometry.ts";
 import type { GraphEdge, GraphModel, GraphNode } from "./model.ts";
 import { flowKey, RING_GAP, RING_WIDTH, shortLabel, useGeometry, type Geometry } from "./useGeometry.ts";
 
@@ -65,12 +65,16 @@ function nodeInFocus(node: GraphNode, focus: NonNullable<Focus>, model: GraphMod
   return edge !== undefined && (edge.from === node.id || edge.to === node.id);
 }
 
-type CanvasProps = DebtGraphProps & { width: number; height: number };
+/**
+ * `clock` (seconds) places the moving marks (debt particles, coins, ripples) for that exact instant instead of
+ * letting the browser animate them, so a frame-by-frame renderer (the demo video) gets the same picture every time.
+ */
+type CanvasProps = DebtGraphProps & { width: number; height: number; clock?: number };
 
-export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, width, height }: CanvasProps) {
+export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, width, height, clock }: CanvasProps) {
   const geometry = useGeometry(model, width, height);
   const [focus, setFocus] = useState<Focus>(null);
-  const reducedMotion = usePrefersReducedMotion();
+  const reducedMotion = usePrefersReducedMotion() && clock === undefined;
   const progress = clearProgress(model, clear);
   const settled = easeInOutCubic(settle);
   const done = settle >= 1;
@@ -104,7 +108,7 @@ export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, 
       {!reducedMotion && (
         <g aria-hidden="true">
           {model.edges.map((edge, i) => (
-            <DebtParticle key={edge.id} edge={edge} index={i} local={progress[i]} geometry={geometry} />
+            <DebtParticle key={edge.id} edge={edge} index={i} local={progress[i]} geometry={geometry} clock={clock} />
           ))}
         </g>
       )}
@@ -126,7 +130,7 @@ export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, 
         ))}
         {done &&
           !reducedMotion &&
-          model.flows.map((flow, i) => <FlowCoins key={flowKey(flow)} flow={flow} index={i} geometry={geometry} />)}
+          model.flows.map((flow, i) => <FlowCoins key={flowKey(flow)} flow={flow} index={i} geometry={geometry} clock={clock} />)}
       </g>
       <g>
         {model.nodes.map((node) => (
@@ -135,6 +139,7 @@ export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, 
             node={node}
             geometry={geometry}
             settle={settled}
+            ripple={reducedMotion ? "off" : (clock ?? "css")}
             symbol={model.symbol}
             dimmed={focus !== null && !nodeInFocus(node, focus, model)}
             onFocus={(on) => setFocus(on ? { kind: "node", id: node.id } : null)}
@@ -225,26 +230,37 @@ function EdgeMark({ edge, local, geometry, dimmed, onFocus }: EdgeMarkProps) {
  * Money owed, in motion: a dot travelling from debtor to creditor along an invoice, fading out as the invoice clears.
  * The path is built at the invoice's full width so it stays put while the stroke drains during the collapse.
  */
-function DebtParticle({ edge, index, local, geometry }: { edge: GraphEdge; index: number; local: number; geometry: Geometry }) {
+function DebtParticle(props: { edge: GraphEdge; index: number; local: number; geometry: Geometry; clock?: number }) {
+  const { edge, index, local, geometry, clock } = props;
   if (local >= 1) return null;
   const width = geometry.stroke(edge.amount);
   const shape = shapeBetween(edge, geometry, geometry.bends.get(edge.id) ?? 0, width);
   if (!shape) return null;
   const duration = 2.4 + (index % 5) * 0.35;
+  const offset = (index * 0.61) % duration;
+  const r = Math.max(2.2, width / 2 + 0.8);
   return (
-    <circle className="particle" r={Math.max(2.2, width / 2 + 0.8)} opacity={0.85 * (1 - local)}>
-      <animateMotion
-        dur={`${duration}s`}
-        begin={`-${((index * 0.61) % duration).toFixed(2)}s`}
-        repeatCount="indefinite"
-        path={shape.curve.d}
-      />
+    <MovingDot className="particle" r={r} opacity={0.85 * (1 - local)} curve={shape.curve} duration={duration} offset={offset} clock={clock} />
+  );
+}
+
+/** A dot travelling along a curve: placed for `clock` when given, otherwise animated by the browser (SMIL). */
+function MovingDot(props: { className: string; r: number; opacity?: number; curve: Curve; duration: number; offset: number; clock?: number }) {
+  const { className, r, opacity, curve, duration, offset, clock } = props;
+  if (clock !== undefined) {
+    const t = (((clock + offset) / duration) % 1 + 1) % 1;
+    const at = quadraticPoint(curve.start, curve.control, curve.end, t);
+    return <circle className={className} r={r} opacity={opacity} cx={at.x} cy={at.y} />;
+  }
+  return (
+    <circle className={className} r={r} opacity={opacity}>
+      <animateMotion dur={`${duration}s`} begin={`-${offset.toFixed(2)}s`} repeatCount="indefinite" path={curve.d} />
     </circle>
   );
 }
 
 /** Once a cycle has settled, lime coins keep travelling along the few transfers that settled it. */
-function FlowCoins({ flow, index, geometry }: { flow: Flow; index: number; geometry: Geometry }) {
+function FlowCoins({ flow, index, geometry, clock }: { flow: Flow; index: number; geometry: Geometry; clock?: number }) {
   const width = Math.max(3.5, geometry.stroke(flow.amount) + 1.5);
   const shape = shapeBetween(flow, geometry, geometry.flowBends.get(flowKey(flow)) ?? 0, width);
   if (!shape) return null;
@@ -252,14 +268,15 @@ function FlowCoins({ flow, index, geometry }: { flow: Flow; index: number; geome
   return (
     <g className="coins">
       {[0, 0.5].map((phase) => (
-        <circle key={phase} className="coin" r={width / 2 + 2.2}>
-          <animateMotion
-            dur={`${duration}s`}
-            begin={`-${((phase + index * 0.17) * duration).toFixed(2)}s`}
-            repeatCount="indefinite"
-            path={shape.curve.d}
-          />
-        </circle>
+        <MovingDot
+          key={phase}
+          className="coin"
+          r={width / 2 + 2.2}
+          curve={shape.curve}
+          duration={duration}
+          offset={((phase + index * 0.17) % 1) * duration}
+          clock={clock}
+        />
       ))}
     </g>
   );
@@ -395,9 +412,21 @@ interface NodeMarkProps {
   dimmed: boolean;
   onFocus: (on: boolean) => void;
   onToggle: () => void;
+  /** "css": the browser animates the ripple; a number: drawn for that clock (seconds); "off": none. */
+  ripple: "css" | "off" | number;
 }
 
-function NodeMark({ node, geometry, settle, symbol, dimmed, onFocus, onToggle }: NodeMarkProps) {
+const RIPPLE_SECONDS = 2.6;
+
+/** Scale and opacity of a ripple at `clock`, matching the node-ripple keyframes in graph.css. */
+function rippleAt(clock: number, delay: number) {
+  const p = ((((clock - delay) / RIPPLE_SECONDS) % 1) + 1) % 1;
+  const k = Math.min(p / 0.55, 1);
+  const eased = 1 - (1 - k) ** 3;
+  return { scale: 1 + 0.7 * eased, opacity: 0.7 * (1 - k) };
+}
+
+function NodeMark({ node, geometry, settle, symbol, dimmed, onFocus, onToggle, ripple }: NodeMarkProps) {
   const position = geometry.positions.get(node.id);
   const radius = geometry.radii.get(node.id) ?? 16;
   if (!position) return null;
@@ -416,11 +445,16 @@ function NodeMark({ node, geometry, settle, symbol, dimmed, onFocus, onToggle }:
       onClick={onToggle}
     >
       <title>{nodeTitle(node, symbol)}</title>
-      {showNet && settle >= 1 && (
+      {showNet && settle >= 1 && ripple !== "off" && (
         <circle
-          className={`node-ripple ${node.net! > 0n ? "node-ripple--in" : "node-ripple--out"}`}
-          r={ring + RING_WIDTH}
+          className={`node-ripple ${node.net! > 0n ? "node-ripple--in" : "node-ripple--out"}${ripple === "css" ? "" : " node-ripple--still"}`}
           aria-hidden="true"
+          {...(ripple === "css"
+            ? { r: ring + RING_WIDTH }
+            : (() => {
+                const { scale, opacity } = rippleAt(ripple, node.net! > 0n ? 0 : 0.4);
+                return { r: (ring + RING_WIDTH) * scale, opacity };
+              })())}
         />
       )}
       <DepositRing node={node} radius={ring} settle={settle} maxDeposit={geometry.maxDeposit} />

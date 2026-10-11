@@ -1,0 +1,55 @@
+{
+  "voice": "flux-sienna-en",
+  "narration": [
+    {
+      "id": "hook",
+      "text": "Businesses owe each other in circles. A roaster owes its packaging supplier, who owes a freight firm, who owes the cafe that buys the roaster’s beans. Paid one by one, four hundred dollars moves. Yet the debts cancel out.",
+      "duration": 12.936
+    },
+    {
+      "id": "dtcc",
+      "text": "Wall Street solved this long ago. On an average day in 2020, DTCC netted $1.77 trillion of trades down to $38 billion. About 98% never had to move.",
+      "duration": 13.824
+    },
+    {
+      "id": "gap",
+      "text": "Small businesses still pay every invoice in full.",
+      "duration": 3.408
+    },
+    {
+      "id": "brand",
+      "text": "Quits is a clearing house for invoices, on Arc.",
+      "duration": 2.544
+    },
+    {
+      "id": "live",
+      "text": "This is Arc mainnet. Seven companies, twenty invoices, $74.66 of debt. One netting cycle cleared all of it by moving fifteen cents.",
+      "duration": 10.128
+    },
+    {
+      "id": "how",
+      "text": "Companies issue invoices and debtors accept them. Each keeps a small USDC deposit. Anyone computes the netting in the browser, and one atomic transaction settles it, with every rule re-checked on chain.",
+      "duration": 11.328
+    },
+    {
+      "id": "arc",
+      "text": "Arc makes it natural. USDC is the native coin, so a deposit is one transaction with no approval. Finality is deterministic: a settled cycle is final in under a second. Circle’s blocklist is enforced in the clearing rules. Invoices carry references through Arc’s Memo, batches go through Multicall3From, and a whole cycle costs about a cent.",
+      "duration": 22.368
+    },
+    {
+      "id": "consent",
+      "text": "Netting is only fair if nobody can cherry-pick. Quits draws cash only from members who sent the cycle, or approved whoever did. Pure loops of debt clear for anyone.",
+      "duration": 9.744
+    },
+    {
+      "id": "proof",
+      "text": "No owner, no admin, no fees. 176 tests and seven invariants stand behind the contract, and its source is verified on Sourcify and on Arc’s explorer.",
+      "duration": 11.904
+    },
+    {
+      "id": "outro",
+      "text": "Quits. Call it quits on circular debt.",
+      "duration": 2.688
+    }
+  ]
+}

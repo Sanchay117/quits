@@ -422,3 +422,8 @@
     animation: none;
   }
 }
+
+/* Ripples drawn for a given clock (the demo video) carry their own size and opacity. */
+.node-ripple--still {
+  animation: none;
+}

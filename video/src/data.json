@@ -1,0 +1,684 @@
+{
+  "takenAt": "2026-10-11T05:56:14.735Z",
+  "block": {
+    "$n": "25365172"
+  },
+  "contract": "0x3ac6634C02ae6428BcFE4C5024dA18Aaf598aac1",
+  "explorer": "https://explorer.arc.io",
+  "chainId": 5042,
+  "companies": 7,
+  "invoiceCount": 28,
+  "totals": {
+    "cleared": {
+      "$n": "74655000"
+    },
+    "cash": {
+      "$n": "150000"
+    }
+  },
+  "tx": {
+    "deploy": "0x050c1dc4b481e968fe961e3e6a96cda58829aa458e55f40970c19d80d9f25216",
+    "fund": "0xce55c8d8276e810b6955e15b42a539b8a47e8225436d77cf84210f91cb53a26e",
+    "memo": "0x530e14e03186a170f8c22204ebbdb93ef7fb9feb12bbd57a00e16dcc1bc4de41",
+    "settle": "0x49e714b491b771a1ae941ca93b201f5b8889f775d2b86f2673c07dd072453f01"
+  },
+  "settled": {
+    "nodes": [
+      {
+        "id": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "label": "Kestrel Freight",
+        "deposit": {
+          "$n": "20000"
+        },
+        "depositAfter": {
+          "$n": "105000"
+        },
+        "net": {
+          "$n": "85000"
+        }
+      },
+      {
+        "id": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "label": "Ember Hill Roasters",
+        "deposit": {
+          "$n": "20000"
+        },
+        "depositAfter": {
+          "$n": "20000"
+        },
+        "net": {
+          "$n": "0"
+        }
+      },
+      {
+        "id": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "label": "Boxwell Packaging",
+        "deposit": {
+          "$n": "50000"
+        },
+        "depositAfter": {
+          "$n": "15000"
+        },
+        "net": {
+          "$n": "-35000"
+        }
+      },
+      {
+        "id": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "label": "Meadowgate Dairy",
+        "deposit": {
+          "$n": "50000"
+        },
+        "depositAfter": {
+          "$n": "10000"
+        },
+        "net": {
+          "$n": "-40000"
+        }
+      },
+      {
+        "id": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "label": "Fernway Cafes",
+        "deposit": {
+          "$n": "75000"
+        },
+        "depositAfter": {
+          "$n": "0"
+        },
+        "net": {
+          "$n": "-75000"
+        }
+      },
+      {
+        "id": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "label": "Halftone Studio",
+        "deposit": {
+          "$n": "20000"
+        },
+        "depositAfter": {
+          "$n": "45000"
+        },
+        "net": {
+          "$n": "25000"
+        }
+      },
+      {
+        "id": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "label": "Inkline Print Shop",
+        "deposit": {
+          "$n": "60000"
+        },
+        "depositAfter": {
+          "$n": "100000"
+        },
+        "net": {
+          "$n": "40000"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "1",
+        "from": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "to": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "amount": {
+          "$n": "4260000"
+        },
+        "cleared": {
+          "$n": "4260000"
+        },
+        "tone": "debt",
+        "title": "Freight, Oct week 1: green coffee from the port"
+      },
+      {
+        "id": "2",
+        "from": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "to": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "amount": {
+          "$n": "2880000"
+        },
+        "cleared": {
+          "$n": "2880000"
+        },
+        "tone": "debt",
+        "title": "Freight, Oct week 2: flat-pack boxes"
+      },
+      {
+        "id": "3",
+        "from": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "to": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "amount": {
+          "$n": "3720000"
+        },
+        "cleared": {
+          "$n": "3720000"
+        },
+        "tone": "debt",
+        "title": "Cold-chain delivery, Oct week 1"
+      },
+      {
+        "id": "4",
+        "from": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "to": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "amount": {
+          "$n": "2250000"
+        },
+        "cleared": {
+          "$n": "2250000"
+        },
+        "tone": "debt",
+        "title": "Coffee bags, 500 count"
+      },
+      {
+        "id": "5",
+        "from": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "to": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "amount": {
+          "$n": "2640000"
+        },
+        "cleared": {
+          "$n": "2640000"
+        },
+        "tone": "debt",
+        "title": "Milk crates, 24"
+      },
+      {
+        "id": "6",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "amount": {
+          "$n": "1755000"
+        },
+        "cleared": {
+          "$n": "1755000"
+        },
+        "tone": "debt",
+        "title": "Takeaway cups, 1,000"
+      },
+      {
+        "id": "7",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "amount": {
+          "$n": "7540000"
+        },
+        "cleared": {
+          "$n": "7480000"
+        },
+        "tone": "debt",
+        "title": "Espresso blend, 12 kg"
+      },
+      {
+        "id": "8",
+        "from": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "to": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "amount": {
+          "$n": "2250000"
+        },
+        "cleared": {
+          "$n": "2250000"
+        },
+        "tone": "debt",
+        "title": "Depot coffee subscription, Oct"
+      },
+      {
+        "id": "9",
+        "from": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "to": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "amount": {
+          "$n": "1840000"
+        },
+        "cleared": {
+          "$n": "1840000"
+        },
+        "tone": "debt",
+        "title": "Studio coffee subscription, Oct"
+      },
+      {
+        "id": "10",
+        "from": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "to": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "amount": {
+          "$n": "8525000"
+        },
+        "cleared": {
+          "$n": "8525000"
+        },
+        "tone": "debt",
+        "title": "Driver breakfast account, Sept"
+      },
+      {
+        "id": "11",
+        "from": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "to": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "amount": {
+          "$n": "6255000"
+        },
+        "cleared": {
+          "$n": "6255000"
+        },
+        "tone": "debt",
+        "title": "Client meeting catering, 3 events"
+      },
+      {
+        "id": "12",
+        "from": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "to": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "amount": {
+          "$n": "5820000"
+        },
+        "cleared": {
+          "$n": "5820000"
+        },
+        "tone": "debt",
+        "title": "Office coffee and pastries, Q3"
+      },
+      {
+        "id": "13",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "amount": {
+          "$n": "4730000"
+        },
+        "cleared": {
+          "$n": "4730000"
+        },
+        "tone": "debt",
+        "title": "Milk, Oct week 1"
+      },
+      {
+        "id": "14",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "amount": {
+          "$n": "4790000"
+        },
+        "cleared": {
+          "$n": "4790000"
+        },
+        "tone": "debt",
+        "title": "Milk, Oct week 2"
+      },
+      {
+        "id": "15",
+        "from": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "to": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "amount": {
+          "$n": "2600000"
+        },
+        "cleared": {
+          "$n": "2600000"
+        },
+        "tone": "debt",
+        "title": "Label redesign, winter blend"
+      },
+      {
+        "id": "16",
+        "from": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "to": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "amount": {
+          "$n": "3800000"
+        },
+        "cleared": {
+          "$n": "3800000"
+        },
+        "tone": "debt",
+        "title": "Box artwork, holiday run"
+      },
+      {
+        "id": "17",
+        "from": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "to": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "amount": {
+          "$n": "3200000"
+        },
+        "cleared": {
+          "$n": "3200000"
+        },
+        "tone": "debt",
+        "title": "Carton label design"
+      },
+      {
+        "id": "19",
+        "from": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "to": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "amount": {
+          "$n": "2460000"
+        },
+        "cleared": {
+          "$n": "2460000"
+        },
+        "tone": "debt",
+        "title": "Bag labels, 1,000"
+      },
+      {
+        "id": "20",
+        "from": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "to": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "amount": {
+          "$n": "1480000"
+        },
+        "cleared": {
+          "$n": "1480000"
+        },
+        "tone": "debt",
+        "title": "Proof prints, client deck"
+      },
+      {
+        "id": "21",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "amount": {
+          "$n": "4680000"
+        },
+        "cleared": {
+          "$n": "1920000"
+        },
+        "tone": "debt",
+        "title": "Grand opening banners"
+      }
+    ],
+    "flows": [
+      {
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "amount": {
+          "$n": "75000"
+        }
+      },
+      {
+        "from": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "to": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "amount": {
+          "$n": "10000"
+        }
+      },
+      {
+        "from": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "to": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "amount": {
+          "$n": "30000"
+        }
+      },
+      {
+        "from": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "to": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "amount": {
+          "$n": "10000"
+        }
+      },
+      {
+        "from": "0xf1a1a7a95e86378263393bd35604f198c326b533",
+        "to": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "amount": {
+          "$n": "25000"
+        }
+      }
+    ],
+    "gross": {
+      "$n": "74655000"
+    },
+    "cash": {
+      "$n": "150000"
+    },
+    "symbol": "USDC"
+  },
+  "open": {
+    "nodes": [
+      {
+        "id": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "label": "Ember Hill Roasters",
+        "deposit": {
+          "$n": "20000"
+        },
+        "depositAfter": {
+          "$n": "120000"
+        },
+        "net": {
+          "$n": "100000"
+        }
+      },
+      {
+        "id": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "label": "Fernway Cafes",
+        "deposit": {
+          "$n": "50000"
+        },
+        "depositAfter": {
+          "$n": "0"
+        },
+        "net": {
+          "$n": "-50000"
+        }
+      },
+      {
+        "id": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "label": "Inkline Print Shop",
+        "deposit": {
+          "$n": "150000"
+        },
+        "depositAfter": {
+          "$n": "20000"
+        },
+        "net": {
+          "$n": "-130000"
+        }
+      },
+      {
+        "id": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "label": "Kestrel Freight",
+        "deposit": {
+          "$n": "105000"
+        },
+        "depositAfter": {
+          "$n": "125000"
+        },
+        "net": {
+          "$n": "20000"
+        }
+      },
+      {
+        "id": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "label": "Halftone Studio",
+        "deposit": {
+          "$n": "45000"
+        },
+        "depositAfter": {
+          "$n": "65000"
+        },
+        "net": {
+          "$n": "20000"
+        }
+      },
+      {
+        "id": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "label": "Meadowgate Dairy",
+        "deposit": {
+          "$n": "10000"
+        },
+        "depositAfter": {
+          "$n": "50000"
+        },
+        "net": {
+          "$n": "40000"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "7",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "amount": {
+          "$n": "60000"
+        },
+        "cleared": {
+          "$n": "60000"
+        },
+        "tone": "debt",
+        "title": "Espresso blend, 12 kg"
+      },
+      {
+        "id": "18",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "amount": {
+          "$n": "1840000"
+        },
+        "cleared": {
+          "$n": "1840000"
+        },
+        "tone": "debt",
+        "title": "Autumn menus, 200 prints"
+      },
+      {
+        "id": "21",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "amount": {
+          "$n": "2760000"
+        },
+        "cleared": {
+          "$n": "2760000"
+        },
+        "tone": "debt",
+        "title": "Grand opening banners"
+      },
+      {
+        "id": "22",
+        "from": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "to": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "amount": {
+          "$n": "4120000"
+        },
+        "cleared": {
+          "$n": "4120000"
+        },
+        "tone": "debt",
+        "title": "Freight, Oct week 3"
+      },
+      {
+        "id": "23",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "amount": {
+          "$n": "4160000"
+        },
+        "cleared": {
+          "$n": "4160000"
+        },
+        "tone": "debt",
+        "title": "Espresso blend, Oct week 3"
+      },
+      {
+        "id": "24",
+        "from": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "to": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "amount": {
+          "$n": "4730000"
+        },
+        "cleared": {
+          "$n": "4730000"
+        },
+        "tone": "debt",
+        "title": "Catering, banner launch event"
+      },
+      {
+        "id": "25",
+        "from": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "to": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "amount": {
+          "$n": "4100000"
+        },
+        "cleared": {
+          "$n": "4100000"
+        },
+        "tone": "debt",
+        "title": "Driver breakfast account, Oct"
+      },
+      {
+        "id": "26",
+        "from": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "to": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "amount": {
+          "$n": "2410000"
+        },
+        "cleared": {
+          "$n": "2410000"
+        },
+        "tone": "debt",
+        "title": "Studio coffee and pastries, Oct"
+      },
+      {
+        "id": "27",
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "amount": {
+          "$n": "2470000"
+        },
+        "cleared": {
+          "$n": "2470000"
+        },
+        "tone": "debt",
+        "title": "Milk, Oct week 3"
+      },
+      {
+        "id": "28",
+        "from": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "to": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "amount": {
+          "$n": "2430000"
+        },
+        "cleared": {
+          "$n": "2430000"
+        },
+        "tone": "debt",
+        "title": "Seasonal carton artwork"
+      }
+    ],
+    "flows": [
+      {
+        "from": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "to": "0x7f2121985fc0fb01b56b3e549bda46a0a78bf9cf",
+        "amount": {
+          "$n": "100000"
+        }
+      },
+      {
+        "from": "0xa10cb79b1d8117568190938e96ad54182b2111e7",
+        "to": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "amount": {
+          "$n": "30000"
+        }
+      },
+      {
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x7b08cd55f02c26e078f513ece3fe8e6d9ec0f36b",
+        "amount": {
+          "$n": "10000"
+        }
+      },
+      {
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0x802685dbe25cb27e38e357e11f6b662772e0ed1e",
+        "amount": {
+          "$n": "20000"
+        }
+      },
+      {
+        "from": "0x84fb4cc95c8b83b07ef35f44fa3b316dd16a79c2",
+        "to": "0xd43562a583f6e4eaa9d991b7539876f541c172b3",
+        "amount": {
+          "$n": "20000"
+        }
+      }
+    ],
+    "gross": {
+      "$n": "29080000"
+    },
+    "cash": {
+      "$n": "180000"
+    },
+    "symbol": "USDC"
+  }
+}

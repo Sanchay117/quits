@@ -1,0 +1,26 @@
+{
+  "name": "quits-video",
+  "private": true,
+  "type": "module",
+  "description": "Motion-graphics demo video for Quits, rendered with Remotion from live Arc Mainnet data",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render Demo out/quits-demo.mp4",
+    "still": "remotion still"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "@remotion/google-fonts": "4.0.534",
+    "@remotion/media": "4.0.534",
+    "@remotion/media-utils": "4.0.534",
+    "@remotion/shapes": "^4.0.534",
+    "@remotion/transitions": "^4.0.534",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.534"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "typescript": "5.9.3"
+  }
+}
