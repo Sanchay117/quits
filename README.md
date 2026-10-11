@@ -3,7 +3,7 @@
 **A clearing house for invoices on Arc: businesses that owe each other in loops settle only the difference, in one
 atomic USDC transaction.**
 
-Built for the Arc Microgrants program (Circle and DoraHacks). **[Watch the 2-minute demo](https://sanchay117.github.io/quits/demo.mp4)**: motion graphics rendered from the live Arc Mainnet data.
+Built for the Arc Microgrants program (Circle and DoraHacks). **[Watch the 2-minute demo](https://youtu.be/fRu21HKrxDA)**: motion graphics rendered from the live Arc Mainnet data.
 
 ![A netting cycle on Arc Testnet: 20 invoices worth $746.55 between seven companies settle with $1.50 of cash](docs/images/cycle.png)
 

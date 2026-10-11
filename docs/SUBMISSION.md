@@ -58,7 +58,7 @@ costs about a cent of gas.
 | Testnet netting cycle | https://explorer.testnet.arc.io/tx/0xcf46664dc6084f901bd6b4d2cd02bb76b8465242b9b432000e62a9021066d207 |
 | Testnet rehearsal (all 38 transactions) | https://github.com/Sanchay117/quits/blob/main/docs/TESTNET.md |
 | Security notes | https://github.com/Sanchay117/quits/blob/main/docs/SECURITY.md |
-| Demo video | https://sanchay117.github.io/quits/demo.mp4 (1:53, narrated; a YouTube link works too if you upload it) |
+| Demo video | https://youtu.be/fRu21HKrxDA (1:53, narrated; mirror: https://sanchay117.github.io/quits/demo.mp4) |
 
 Built with: Solidity 0.8.30 and Foundry, TypeScript, viem, React 19 and Vite.
 
