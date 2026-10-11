@@ -1,22 +1,22 @@
 # Mainnet runbook
 
-The same steps that ran on Arc Testnet ([TESTNET.md](TESTNET.md)), at `--scale 0.4` to keep the float small. Every
+The same steps that ran on Arc Testnet ([TESTNET.md](TESTNET.md)), at `--scale 0.2` to keep the float small. Every
 command that sends a transaction prints its plan first and sends nothing without `--yes`.
 
 ## Budget
 
 | | USDC |
 |---|---:|
-| Send to the deployer `0x06eCC1D567859fB115265740ECF78eBdFA1b6537` | **2.50** |
+| Send to the deployer `0x06eCC1D567859fB115265740ECF78eBdFA1b6537` | **1.50** |
 | Gas actually spent (deploy, fund, seed both rounds, first cycle) | about 0.22 |
 | Returned by `recover.ts` at the end (deposits and unused gas money) | everything else |
 
-At `--scale 0.4` the first cycle clears $298.62 of invoices with $0.60 of cash (99.8% netted), the same shape as the
-testnet run at full scale ($746.55 with $1.50). Checked offline with `node scripts/check-scale.ts --scale 0.4`.
+At `--scale 0.2` the first cycle clears $149.31 of invoices with $0.30 of cash (99.8% netted), the same shape as the
+testnet run at full scale ($746.55 with $1.50). Checked offline with `node scripts/check-scale.ts --scale 0.2`.
 
 ## 1. Fund the deployer
 
-From MetaMask, on the **Arc** network, send **2.50 USDC** to `0x06eCC1D567859fB115265740ECF78eBdFA1b6537`.
+From MetaMask, on the **Arc** network, send **1.50 USDC** to `0x06eCC1D567859fB115265740ECF78eBdFA1b6537`.
 
 ## 2. Deploy and seed
 
@@ -27,14 +27,14 @@ node scripts/deploy.ts --network mainnet          # plan: deployer, balance, sim
 node scripts/deploy.ts --network mainnet --yes    # deploy, records core/deployments.ts
 node scripts/verify.ts --network mainnet          # Sourcify + Arc Explorer, no transaction
 node scripts/wallets.ts --network mainnet         # demo company keys in .secrets/ (back them up)
-node scripts/fund.ts --network mainnet --scale 0.4
-node scripts/fund.ts --network mainnet --scale 0.4 --yes
-node scripts/seed.ts --network mainnet --scale 0.4
-node scripts/seed.ts --network mainnet --scale 0.4 --yes
+node scripts/fund.ts --network mainnet --scale 0.2
+node scripts/fund.ts --network mainnet --scale 0.2 --yes
+node scripts/seed.ts --network mainnet --scale 0.2
+node scripts/seed.ts --network mainnet --scale 0.2 --yes
 node scripts/cycle.ts --network mainnet
 node scripts/cycle.ts --network mainnet --yes
-node scripts/seed.ts --network mainnet --round 2 --scale 0.4
-node scripts/seed.ts --network mainnet --round 2 --scale 0.4 --yes
+node scripts/seed.ts --network mainnet --round 2 --scale 0.2
+node scripts/seed.ts --network mainnet --round 2 --scale 0.2 --yes
 node scripts/status.ts --network mainnet
 ```
 

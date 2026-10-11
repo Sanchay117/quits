@@ -1,4 +1,4 @@
 packages:
   - app
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  esbuild: true

@@ -151,4 +151,4 @@ Run around 20:50 UTC the same day against the state above, to confirm the script
 
 ## Mainnet runbook
 
-Moved to [MAINNET.md](MAINNET.md), with a smaller budget (`--scale 0.4`: about 2.50 USDC on the deployer, about 0.24 USDC of it spent on gas).
+Moved to [MAINNET.md](MAINNET.md), with a smaller budget (`--scale 0.2`: about 1.50 USDC on the deployer, about 0.24 USDC of it spent on gas).
