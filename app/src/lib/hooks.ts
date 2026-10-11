@@ -31,3 +31,29 @@ export function useElementWidth(ref: RefObject<HTMLElement | null>, step = 8): n
   }, [ref, step]);
   return width;
 }
+
+/**
+ * Sections of the current page fade up as they scroll into view. Sections already on screen are left alone, so
+ * nothing flashes on load; under reduced motion nothing is hidden.
+ */
+export function useScrollReveal(key: string): void {
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined" || window.matchMedia(REDUCED_MOTION).matches) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-in");
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+    );
+    for (const section of document.querySelectorAll<HTMLElement>("main .section")) {
+      if (section.getBoundingClientRect().top < window.innerHeight) continue;
+      section.classList.add("reveal");
+      observer.observe(section);
+    }
+    return () => observer.disconnect();
+  }, [key]);
+}

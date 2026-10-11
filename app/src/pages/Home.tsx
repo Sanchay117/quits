@@ -14,6 +14,7 @@ import { nettingModel, runSolver, simulatedInput } from "../lib/netting.ts";
 import { activeNetwork, isDeployed } from "../lib/network.ts";
 import { sourcifyUrl } from "../lib/site.ts";
 import { tokenBySymbol } from "../lib/tokens.ts";
+import { LoopDemo } from "../components/LoopDemo.tsx";
 
 function sampleModel(): GraphModel {
   const { parties, debts } = sampleNetwork();
@@ -213,6 +214,7 @@ export function HomePage() {
             billion, about 98% (<ExternalLink href={DTCC_2020}>DTCC</ExternalLink>). Small businesses still pay every
             invoice in full.
           </p>
+          <LoopDemo />
         </div>
         <aside className="callout">
           <span className="callout-figure">98%</span>

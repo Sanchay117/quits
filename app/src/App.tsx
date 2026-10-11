@@ -2,6 +2,7 @@
 import { useEffect, type MouseEvent } from "react";
 import { Footer, Header, Main } from "./components/Shell.tsx";
 import { startPolling } from "./lib/chainState.ts";
+import { useScrollReveal } from "./lib/hooks.ts";
 import { parseRoute, useHash, type Route } from "./lib/router.ts";
 import { initWallet } from "./lib/wallet.ts";
 import { AccountPage } from "./pages/Account.tsx";
@@ -68,6 +69,7 @@ export function App() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [route.page]);
+  useScrollReveal(route.page);
 
   return (
     <>

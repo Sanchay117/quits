@@ -4,7 +4,7 @@
 import { useRef, useState } from "react";
 import type { Flow } from "../lib/flows.ts";
 import { initials } from "../lib/format.ts";
-import { useElementWidth } from "../lib/hooks.ts";
+import { useElementWidth, usePrefersReducedMotion } from "../lib/hooks.ts";
 import { formatMoney, scaleByFraction } from "../lib/money.ts";
 import { arrowHead, clamp01, curveBetween, easeInOutCubic, share, staggered } from "./geometry.ts";
 import type { GraphEdge, GraphModel, GraphNode } from "./model.ts";
@@ -70,8 +70,10 @@ type CanvasProps = DebtGraphProps & { width: number; height: number };
 export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, width, height }: CanvasProps) {
   const geometry = useGeometry(model, width, height);
   const [focus, setFocus] = useState<Focus>(null);
+  const reducedMotion = usePrefersReducedMotion();
   const progress = clearProgress(model, clear);
   const settled = easeInOutCubic(settle);
+  const done = settle >= 1;
 
   const showAllLabels = labels === "always" || (width >= 560 && model.edges.length <= MAX_AUTO_LABELS);
   const labelled = (edge: GraphEdge) =>
@@ -99,6 +101,13 @@ export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, 
           />
         ))}
       </g>
+      {!reducedMotion && (
+        <g aria-hidden="true">
+          {model.edges.map((edge, i) => (
+            <DebtParticle key={edge.id} edge={edge} index={i} local={progress[i]} geometry={geometry} />
+          ))}
+        </g>
+      )}
       <g aria-hidden="true">
         {model.edges.map((edge, i) => (
           <ClearPulse key={edge.id} edge={edge} local={progress[i]} geometry={geometry} />
@@ -115,6 +124,9 @@ export function GraphCanvas({ model, clear, settle, labels = "auto", ariaLabel, 
             dimmed={!isRelated(focus, flow.from, flow.to)}
           />
         ))}
+        {done &&
+          !reducedMotion &&
+          model.flows.map((flow, i) => <FlowCoins key={flowKey(flow)} flow={flow} index={i} geometry={geometry} />)}
       </g>
       <g>
         {model.nodes.map((node) => (
@@ -205,6 +217,50 @@ function EdgeMark({ edge, local, geometry, dimmed, onFocus }: EdgeMarkProps) {
         points={arrowHead(shape.curve.tip, shape.curve.angle, shape.head.length, shape.head.width)}
       />
       <path className="edge-hit" d={shape.curve.d} strokeWidth={Math.max(14, width + 10)} />
+    </g>
+  );
+}
+
+/**
+ * Money owed, in motion: a dot travelling from debtor to creditor along an invoice, fading out as the invoice clears.
+ * The path is built at the invoice's full width so it stays put while the stroke drains during the collapse.
+ */
+function DebtParticle({ edge, index, local, geometry }: { edge: GraphEdge; index: number; local: number; geometry: Geometry }) {
+  if (local >= 1) return null;
+  const width = geometry.stroke(edge.amount);
+  const shape = shapeBetween(edge, geometry, geometry.bends.get(edge.id) ?? 0, width);
+  if (!shape) return null;
+  const duration = 2.4 + (index % 5) * 0.35;
+  return (
+    <circle className="particle" r={Math.max(2.2, width / 2 + 0.8)} opacity={0.85 * (1 - local)}>
+      <animateMotion
+        dur={`${duration}s`}
+        begin={`-${((index * 0.61) % duration).toFixed(2)}s`}
+        repeatCount="indefinite"
+        path={shape.curve.d}
+      />
+    </circle>
+  );
+}
+
+/** Once a cycle has settled, lime coins keep travelling along the few transfers that settled it. */
+function FlowCoins({ flow, index, geometry }: { flow: Flow; index: number; geometry: Geometry }) {
+  const width = Math.max(3.5, geometry.stroke(flow.amount) + 1.5);
+  const shape = shapeBetween(flow, geometry, geometry.flowBends.get(flowKey(flow)) ?? 0, width);
+  if (!shape) return null;
+  const duration = 1.9;
+  return (
+    <g className="coins">
+      {[0, 0.5].map((phase) => (
+        <circle key={phase} className="coin" r={width / 2 + 2.2}>
+          <animateMotion
+            dur={`${duration}s`}
+            begin={`-${((phase + index * 0.17) * duration).toFixed(2)}s`}
+            repeatCount="indefinite"
+            path={shape.curve.d}
+          />
+        </circle>
+      ))}
     </g>
   );
 }
@@ -360,6 +416,13 @@ function NodeMark({ node, geometry, settle, symbol, dimmed, onFocus, onToggle }:
       onClick={onToggle}
     >
       <title>{nodeTitle(node, symbol)}</title>
+      {showNet && settle >= 1 && (
+        <circle
+          className={`node-ripple ${node.net! > 0n ? "node-ripple--in" : "node-ripple--out"}`}
+          r={ring + RING_WIDTH}
+          aria-hidden="true"
+        />
+      )}
       <DepositRing node={node} radius={ring} settle={settle} maxDeposit={geometry.maxDeposit} />
       <circle className="node-body" r={radius} />
       <text className="node-initials" dy="0.35em" fontSize={Math.round(radius * 0.62)}>

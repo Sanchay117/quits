@@ -432,3 +432,252 @@
   flex-wrap: wrap;
   gap: 4px 18px;
 }
+
+/* Motion: hero aurora, scroll reveals, the loop illustration ------------------------------------------------------- */
+
+.hero {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Soft lime and mint light drifting behind the hero. Gradients only (no blur filter), so nothing overflows. */
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -60px;
+  left: 0;
+  right: 0;
+  height: 560px;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 46% at 72% 38%, var(--glow), transparent 70%),
+    radial-gradient(30% 40% at 20% 60%, color-mix(in srgb, var(--good) 22%, transparent), transparent 70%);
+  opacity: 0.55;
+  animation: aurora 16s ease-in-out infinite alternate;
+}
+
+@keyframes aurora {
+  0% {
+    transform: translate3d(-2%, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(2%, 3%, 0) scale(1.06);
+  }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 700ms ease,
+    transform 700ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+.loop-demo {
+  margin: 22px 0 0;
+  max-width: 420px;
+}
+
+.loop-demo svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.loop-node circle {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 2px;
+}
+
+.loop-initials {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+.loop-name {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+
+.loop-edge line {
+  stroke: var(--edge);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: loop-edge 9s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.3s);
+}
+
+.loop-edge text {
+  fill: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+  animation: loop-label 9s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.3s);
+}
+
+.loop-head {
+  fill: var(--edge);
+}
+
+.loop-coin {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 6px var(--glow));
+  animation: loop-coin 9s linear infinite;
+}
+
+/* 0 to 15%: debts draw in. 15 to 45%: paid one by one, cash circles. 45 to 60%: they glow lime and cancel. */
+@keyframes loop-edge {
+  0% {
+    stroke-dashoffset: 1;
+    stroke: var(--edge);
+    opacity: 1;
+  }
+  12%,
+  45% {
+    stroke-dashoffset: 0;
+    stroke: var(--edge);
+    opacity: 1;
+  }
+  52% {
+    stroke-dashoffset: 0;
+    stroke: var(--accent);
+    opacity: 1;
+  }
+  62%,
+  92% {
+    stroke-dashoffset: 0;
+    stroke: var(--accent);
+    opacity: 0.12;
+  }
+  100% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+}
+
+@keyframes loop-label {
+  0%,
+  6% {
+    opacity: 0;
+  }
+  14%,
+  48% {
+    opacity: 1;
+  }
+  60%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes loop-coin {
+  0%,
+  14% {
+    opacity: 0;
+  }
+  17%,
+  44% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.loop-caption {
+  display: grid;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.loop-caption > span {
+  grid-area: 1 / 1;
+}
+
+.loop-caption strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.loop-caption-net strong {
+  color: var(--accent);
+}
+
+.loop-caption-gross {
+  animation: loop-caption-gross 9s ease-in-out infinite;
+}
+
+.loop-caption-net {
+  animation: loop-caption-net 9s ease-in-out infinite;
+}
+
+@keyframes loop-caption-gross {
+  0%,
+  44% {
+    opacity: 1;
+  }
+  48%,
+  96% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes loop-caption-net {
+  0%,
+  50% {
+    opacity: 0;
+  }
+  54%,
+  90% {
+    opacity: 1;
+  }
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero::before,
+  .loop-edge line,
+  .loop-edge text,
+  .loop-coin,
+  .loop-caption > span {
+    animation: none;
+  }
+
+  .loop-edge line {
+    stroke-dashoffset: 0;
+  }
+
+  .loop-coin,
+  .loop-caption-gross {
+    display: none;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

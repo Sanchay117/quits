@@ -37,7 +37,15 @@ export function CollapseView({ model, playKey, autoplay = false, header, footer,
   return (
     <div className="collapse" ref={containerRef}>
       {header}
-      <DebtGraph model={model} clear={collapse.clear} settle={collapse.settle} ariaLabel={ariaLabel} />
+      <div className="collapse-stage">
+        <DebtGraph model={model} clear={collapse.clear} settle={collapse.settle} ariaLabel={ariaLabel} />
+        {settled && playable && (
+          <div className="stamp" aria-hidden="true">
+            <span className="stamp-word">Quits</span>
+            <span className="stamp-note">{nettedAway(model.gross, model.cash)} netted</span>
+          </div>
+        )}
+      </div>
       <div className="collapse-bar">
         <Counter
           model={model}
