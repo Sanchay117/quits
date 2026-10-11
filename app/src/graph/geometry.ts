@@ -48,7 +48,7 @@ function towards(from: Point, to: Point, distance: number): Point {
   return { x: from.x + (dx / length) * distance, y: from.y + (dy / length) * distance };
 }
 
-function quadraticPoint(a: Point, c: Point, b: Point, t: number): Point {
+export function quadraticPoint(a: Point, c: Point, b: Point, t: number): Point {
   const u = 1 - t;
   return { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y };
 }
@@ -64,6 +64,10 @@ export interface Curve {
   tip: Point;
   /** Direction of travel at the tip, in radians. */
   angle: number;
+  /** The drawn quadratic curve, for placing moving marks on it frame by frame. */
+  start: Point;
+  control: Point;
+  end: Point;
 }
 
 /**
@@ -80,6 +84,9 @@ export function curveBetween(a: Point, b: Point, bend: number, startGap: number,
     mid: quadraticPoint(start, control, end, 0.5),
     tip,
     angle: Math.atan2(tip.y - control.y, tip.x - control.x),
+    start,
+    control,
+    end,
   };
 }
 

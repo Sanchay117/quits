@@ -71,10 +71,14 @@ runScript(async () => {
     console.log("\nDry run: nothing submitted.");
     return;
   }
-  for (const c of commands) {
+  for (const [i, c] of commands.entries()) {
     section(`forge verify-contract: ${c.label}`);
     const run = await runForge(c.args);
-    if (run.code !== 0) fail(`${c.label} verification failed; see forge's output above`);
+    if (run.code === 0) continue;
+    // Sourcify is the source of truth. Arc's mainnet explorer API sits behind a Cloudflare challenge that blocks
+    // scripts, but the explorer imports verified sources by itself, so its failure is only a warning.
+    if (i === 0) fail(`${c.label} verification failed; see forge's output above`);
+    console.log(`  ${c.label} did not accept the request (often a Cloudflare check); it picks up the Sourcify match by itself.`);
   }
 
   section("Verified");

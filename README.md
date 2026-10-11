@@ -52,7 +52,8 @@ Small businesses still pay every invoice in full.
 |---|---|
 | Web app | https://sanchay117.github.io/quits/ (reads Arc Mainnet by default; [`?network=testnet`](https://sanchay117.github.io/quits/?network=testnet) for the testnet deployment) |
 | Source | https://github.com/Sanchay117/quits |
-| Arc Mainnet contract | **Pending.** The mainnet run follows [docs/MAINNET.md](docs/MAINNET.md). |
+| Arc Mainnet contract | [`0x3ac6634C02ae6428BcFE4C5024dA18Aaf598aac1`](https://explorer.arc.io/address/0x3ac6634C02ae6428BcFE4C5024dA18Aaf598aac1), source [verified on Sourcify](https://repo.sourcify.dev/5042/0x3ac6634C02ae6428BcFE4C5024dA18Aaf598aac1) and on Arc Explorer |
+| First mainnet cycle | [20 invoices, $74.66 cleared with $0.15 of cash](https://explorer.arc.io/tx/0x49e714b491b771a1ae941ca93b201f5b8889f775d2b86f2673c07dd072453f01) (the demo runs at a tenth of the testnet amounts to keep the float small; [docs/MAINNET.md](docs/MAINNET.md)) |
 | Arc Testnet contract | [`0xcf711Fbbc8938F7740615a97dc9b66149cd5e704`](https://explorer.testnet.arc.io/address/0xcf711Fbbc8938F7740615a97dc9b66149cd5e704), source [verified on Sourcify](https://repo.sourcify.dev/5042002/0xcf711Fbbc8938F7740615a97dc9b66149cd5e704) |
 | Testnet rehearsal | [docs/TESTNET.md](docs/TESTNET.md): all 38 transactions with explorer links and their cost |
 | Security notes | [docs/SECURITY.md](docs/SECURITY.md) |
@@ -239,8 +240,8 @@ Counts are from a run on 2026-10-11: all passed and both typechecks were clean. 
 ## Limitations
 
 - **The demo network is ours.** Its seven companies are simulated businesses with wallets we control, not customers.
-- **Mainnet deployment is pending.** Everything above has run end to end on Arc Testnet; mainnet uses the same
-  scripts.
+- **Small mainnet amounts.** The mainnet demo runs at a tenth of the testnet amounts (`--scale 0.1`) so the float
+  stays near one dollar; the netting shape and the 99.8% are the same.
 - **No credit.** Deposits are prefunded and a member pays only from its own deposit. There is no lending and no
   default process: an accepted invoice clears only as far as netting and the debtor's deposit allow, and the rest
   waits.

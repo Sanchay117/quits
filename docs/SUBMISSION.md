@@ -49,10 +49,10 @@ costs about a cent of gas.
 |---|---|
 | Live app | https://sanchay117.github.io/quits/ |
 | Source code | https://github.com/Sanchay117/quits |
-| ClearingHouse on Arc Mainnet | `[PENDING: mainnet address from core/deployments.ts]` |
-| Mainnet explorer | `https://explorer.arc.io/address/[PENDING: mainnet address]` |
-| Mainnet source verification | `https://repo.sourcify.dev/5042/[PENDING: mainnet address]` |
-| First mainnet netting cycle | `https://explorer.arc.io/tx/[PENDING: settle() tx hash printed by cycle.ts]` |
+| ClearingHouse on Arc Mainnet | `0x3ac6634C02ae6428BcFE4C5024dA18Aaf598aac1` |
+| Mainnet explorer | https://explorer.arc.io/address/0x3ac6634C02ae6428BcFE4C5024dA18Aaf598aac1 |
+| Mainnet source verification | https://repo.sourcify.dev/5042/0x3ac6634C02ae6428BcFE4C5024dA18Aaf598aac1 |
+| First mainnet netting cycle | https://explorer.arc.io/tx/0x49e714b491b771a1ae941ca93b201f5b8889f775d2b86f2673c07dd072453f01 |
 | ClearingHouse on Arc Testnet | https://explorer.testnet.arc.io/address/0xcf711Fbbc8938F7740615a97dc9b66149cd5e704 |
 | Testnet source verification | https://repo.sourcify.dev/5042002/0xcf711Fbbc8938F7740615a97dc9b66149cd5e704 |
 | Testnet netting cycle | https://explorer.testnet.arc.io/tx/0xcf46664dc6084f901bd6b4d2cd02bb76b8465242b9b432000e62a9021066d207 |
